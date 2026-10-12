@@ -253,7 +253,7 @@
     return new Promise(resolve => {
       let done = false;
       const fin = () => { if (!done) { done = true; clearTimeout(timer); resolve(); } };
-      const timer = setTimeout(fin, 2500);
+      const timer = setTimeout(fin, 1200); // 예전 2.5초 → 1.2초(소리 없는 깨우기는 시작 신호가 안 오는 기기가 있어 너무 오래 기다렸어요)
       try {
         const u = new SpeechSynthesisUtterance(WARMUP_TEXT);
         u.lang = 'en-US'; u.volume = 0.01; u.rate = 1.5;
@@ -512,7 +512,8 @@
   async function __speakViaAudio(text, rate, gen, withDing) {
     const r = rate * ONLINE_VOICE_SPEED_BOOST;
     // 매번 재생 직전에 이어폰을 깨우고, 깨우기 소리가 실제로 날 때까지 기다린 뒤 재생합니다.
-    await wakeOutputViaTTS();
+    // 띵동이 이어폰을 깨워 주므로, 띵동이 있는 재생은 깨우기 대기를 건너뜁니다(반복 사이 간격 단축).
+    if (!withDing) await wakeOutputViaTTS();
     if (gen !== __voiceGen) return;
     let first = true;
     for (const chunk of __splitForTTS(text, 180)) {
@@ -680,6 +681,47 @@ const STT_DEBUG = /[?&]debug=1\b/.test(location.search); // 주소 끝에 &debug
     return text ? { ok: true, heard: text } : { ok: false, error: 'no-speech', debug: dbg + (STT_DEBUG ? ` / 원문 "${data.raw || ''}" / 무음확률 ${JSON.stringify(data.noSpeechProb)}` : '') };
   }
 
+
+  // ── 말이 끝나면 녹음 일찍 멈추기 ──
+  // 예전엔 문장 길이로 정한 시간(예: 6초)을 다 채워 녹음해서 다 말한 뒤에도 기다려야 했어요.
+  // 마이크 소리 크기를 0.1초마다 재서, 말을 시작한 뒤 1초 동안 조용하면 바로 녹음을 끝냅니다.
+  // (소리 크기를 못 재는 기기면 아무 일도 안 하고, 예전처럼 정해진 시간까지 녹음해요)
+  function __watchSilence(stream, onSilence) {
+    let ctx = null, timer = null, stopped = false;
+    const stop = () => { stopped = true; clearInterval(timer); try { ctx && ctx.close(); } catch (e) {} };
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return stop;
+      ctx = new AC();
+      if (ctx.state === 'suspended' && ctx.resume) ctx.resume().catch(() => {});
+      const src = ctx.createMediaStreamSource(stream);
+      const an = ctx.createAnalyser();
+      an.fftSize = 1024;
+      src.connect(an);
+      const data = new Float32Array(an.fftSize);
+      const t0 = Date.now();
+      let noise = 0, noiseN = 0, loudFrames = 0, speechAt = 0, quietMs = 0;
+      timer = setInterval(() => {
+        if (stopped) return;
+        an.getFloatTimeDomainData(data);
+        let sum = 0; for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+        const rms = Math.sqrt(sum / data.length);
+        const elapsed = Date.now() - t0;
+        if (elapsed < 400) { noise += rms; noiseN++; return; }           // 처음 0.4초: 주변 소음 크기 재기
+        const floor = noiseN ? noise / noiseN : 0;
+        const th = Math.max(0.015, floor * 2.5);
+        if (!speechAt) {
+          loudFrames = rms > th ? loudFrames + 1 : 0;
+          if (loudFrames >= 2) speechAt = Date.now();                       // 0.2초 이상 소리가 나면 '말 시작'
+          return;
+        }
+        quietMs = rms < th * 0.8 ? quietMs + 100 : 0;
+        if (quietMs >= 1000 && Date.now() - speechAt >= 500) { stop(); onSilence(); }
+      }, 100);
+    } catch (e) { stop(); }
+    return stop;
+  }
+
   function recordAndTranscribe(targetText, onReady) {
     return new Promise(async (resolve) => {
       let settled = false, stream = null, recorder = null, timer = null, aborted = false;
@@ -724,6 +766,8 @@ const STT_DEBUG = /[?&]debug=1\b/.test(location.search); // 주소 끝에 &debug
       const words = targetText.trim().split(/\s+/).filter(Boolean).length;
       const seconds = Math.min(25, 3 + words * 0.65);
       recorder.start();
+      const stopWatch = __watchSilence(stream, () => { try { recorder.state !== 'inactive' && recorder.stop(); } catch (e) {} });
+      recorder.addEventListener('stop', stopWatch);
       if (onReady) onReady();
       timer = setTimeout(() => { try { recorder.state !== 'inactive' && recorder.stop(); } catch (e) { settle({ ok: false, error: 'no-speech' }); } }, seconds * 1000);
     });
@@ -961,7 +1005,7 @@ const STT_DEBUG = /[?&]debug=1\b/.test(location.search); // 주소 끝에 &debug
           }
         }
 
-        if (!runState.stopped && i < count) await new Promise(r => setTimeout(r, useMic ? (isMobileDevice ? 1500 : 700) : 500)); // 태블릿: 블루투스 이어폰이 통화 모드에서 돌아올 시간
+        if (!runState.stopped && i < count) await new Promise(r => setTimeout(r, useMic ? (isMobileDevice ? 900 : 700) : 500)); // 태블릿: 블루투스 이어폰이 통화 모드에서 돌아올 시간
       }
       runState.stopped = true;
       runState.activeRecognition = null;
