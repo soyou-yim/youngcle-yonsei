@@ -101,6 +101,7 @@
   .imp-head .imp-id{font-size:0.8rem; color:var(--muted);}
   .imp-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;}
   .imp-grid3{grid-template-columns:1fr 1fr 1fr;}
+  .date-input{width:100%; background:var(--input-bg); border:1px solid var(--border); border-radius:10px; color:var(--text); padding:9px 12px; font-size:0.95rem; font-family:inherit;}
   @media (max-width:560px){ .imp-grid, .imp-grid3{grid-template-columns:1fr;} }
   .imp-grid select, .imp-grid input{width:100%;}
   .imp-preview{margin-top:8px; font-size:0.82rem;}
@@ -171,6 +172,15 @@
         <span class="sub" id="nvoimLastRun" style="margin:0;"></span>
       </div>
       <div class="status" id="nvoimRunStatus"></div>
+
+      <h3 class="sub-h">📅 지난 날짜 한 번에 가져오기</h3>
+      <div class="card-desc" style="margin-bottom:6px;">기간을 고르면 그 기간의 엔보임 피드백을 날짜별로 모두 가져와요. 이미 저장된 수업은 건너뛰어요.</div>
+      <div class="imp-grid imp-grid3" style="align-items:end;">
+        <div><label for="nvoimFrom">시작일</label><input type="date" id="nvoimFrom" class="date-input"></div>
+        <div><label for="nvoimTo">종료일</label><input type="date" id="nvoimTo" class="date-input"></div>
+        <div><button class="btn-ghost" id="nvoimRangeBtn" style="width:100%;">📅 이 기간 가져오기</button></div>
+      </div>
+      <div class="status" id="nvoimRangeStatus"></div>
 
       <details class="imp-preview" style="margin-top:14px;">
         <summary>🔗 학생 ↔ 회원 연결 목록</summary>
@@ -718,6 +728,55 @@ document.getElementById('nvoimRunBtn').addEventListener('click', async () => {
     statusEl.textContent = '⚠️ ' + e.message; statusEl.className = 'status error';
   }
   btn.disabled = false;
+  await loadNvoim();
+  if (memberSelect.value) loadSets();
+});
+
+
+// 날짜 범위 가져오기: 날짜마다 서버를 호출(한 번에 8초 제한이라 안 끝나면 같은 날짜를 이어서 호출)
+(function initRange() {
+  const kst = new Date(Date.now() + 9 * 3600 * 1000);
+  const ymd = d => d.toISOString().slice(0, 10);
+  const yesterday = new Date(kst.getTime() - 86400000);
+  const weekAgo = new Date(kst.getTime() - 7 * 86400000);
+  document.getElementById('nvoimTo').value = ymd(yesterday);
+  document.getElementById('nvoimFrom').value = ymd(weekAgo);
+  document.getElementById('nvoimTo').max = ymd(kst);
+  document.getElementById('nvoimFrom').max = ymd(kst);
+})();
+
+document.getElementById('nvoimRangeBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('nvoimRangeBtn');
+  const runBtn = document.getElementById('nvoimRunBtn');
+  const statusEl = document.getElementById('nvoimRangeStatus');
+  const from = document.getElementById('nvoimFrom').value;
+  const to = document.getElementById('nvoimTo').value;
+  if (!from || !to || from > to) { statusEl.textContent = '⚠️ 시작일과 종료일을 확인해주세요.'; statusEl.className = 'status error'; return; }
+  const dates = [];
+  for (let d = new Date(from + 'T00:00:00Z'); d <= new Date(to + 'T00:00:00Z'); d = new Date(d.getTime() + 86400000)) dates.push(d.toISOString().slice(0, 10));
+  if (dates.length > 92) { statusEl.textContent = '⚠️ 한 번에 최대 3개월(92일)까지 가져올 수 있어요.'; statusEl.className = 'status error'; return; }
+
+  btn.disabled = true; runBtn.disabled = true;
+  statusEl.className = 'status';
+  const total = { saved: 0, pending: 0 };
+  const errors = [];
+  try {
+    for (let i = 0; i < dates.length; i++) {
+      for (let round = 1; round <= 6; round++) {
+        statusEl.textContent = `가져오는 중... ${dates[i]} (${i + 1}/${dates.length}일) · 지금까지 저장 ${total.saved}건`;
+        const { summary } = await apiFetch(NVOIM_API, { method: 'POST', body: JSON.stringify({ action: 'run', date: dates[i] }) });
+        total.saved += summary.saved; total.pending += summary.pending;
+        summary.errors.forEach(e => errors.push(`${dates[i]} ${e}`));
+        if (summary.finished) break;
+      }
+    }
+    statusEl.className = 'status ' + (errors.length ? 'error' : 'success');
+    statusEl.textContent = `✅ ${from} ~ ${to} (${dates.length}일) 완료 · 새로 저장 ${total.saved}건 · 회원 선택 필요 ${total.pending}건` +
+      (errors.length ? `\n⚠️ ${errors.slice(0, 5).join('\n⚠️ ')}${errors.length > 5 ? `\n…외 ${errors.length - 5}건` : ''}` : '');
+  } catch (e) {
+    statusEl.textContent = '⚠️ ' + e.message + ` (지금까지 저장 ${total.saved}건 — 다시 누르면 이어서 가져와요)`; statusEl.className = 'status error';
+  }
+  btn.disabled = false; runBtn.disabled = false;
   await loadNvoim();
   if (memberSelect.value) loadSets();
 });
