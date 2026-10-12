@@ -697,20 +697,29 @@ function __dingSamples(sr) {
 let __dingAudioUrl = null, __dingAudio = null;
 // PC(기기 음성 엔진)용: 띵동을 따로 재생하고 끝나면 resolve
 function __playDingStandalone() {
-  return new Promise(resolve => {
-    let done = false;
-    const fin = () => { if (!done) { done = true; resolve(); } };
+  // 1순위: 버튼을 누를 때 이미 깨워 둔 원어민 음성 재생기로 띵동을 틉니다.
+  //        삼성 인터넷 등은 '버튼으로 깨운 재생기'가 아니면 자동 재생을 막아서 따로 만든 재생기로는 소리가 안 났어요.
+  // 2순위: 그게 안 되면 예전처럼 띵동 전용 재생기로 시도합니다.
+  return (async () => {
     try {
       if (!__dingAudioUrl) __dingAudioUrl = URL.createObjectURL(__wavBlob(__dingSamples(24000), 24000));
-      if (!__dingAudio) __dingAudio = new Audio();
-      __dingAudio.src = __dingAudioUrl;
-      __dingAudio.onended = () => setTimeout(fin, 250);
-      __dingAudio.onerror = fin;
-      const p = __dingAudio.play();
-      if (p && p.catch) p.catch(fin);
-      setTimeout(fin, 2000);
-    } catch (e) { fin(); }
-  });
+      const ok = await __playAudioOnce(__dingAudioUrl, 1);
+      if (ok) { await new Promise(r => setTimeout(r, 250)); return; }
+    } catch (e) {}
+    await new Promise(resolve => {
+      let done = false;
+      const fin = () => { if (!done) { done = true; resolve(); } };
+      try {
+        if (!__dingAudio) __dingAudio = new Audio();
+        __dingAudio.src = __dingAudioUrl;
+        __dingAudio.onended = () => setTimeout(fin, 250);
+        __dingAudio.onerror = fin;
+        const pr = __dingAudio.play();
+        if (pr && pr.catch) pr.catch(fin);
+        setTimeout(fin, 2000);
+      } catch (e) { fin(); }
+    });
+  })();
 }
 // 속도가 적용된 음성 주소를 돌려줍니다. 실패하면 null(그때는 예전처럼 Chrome 재생 속도로 처리).
 async function __getStretchedVoiceUrl(url, rate, withDing) {
