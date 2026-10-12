@@ -188,6 +188,32 @@
       </details>
     </div>
 
+    <!-- ============ 수업 피드백 리포트 ============ -->
+    <div class="card" id="reportCard">
+      <h2>📊 수업 피드백 리포트</h2>
+      <div class="card-desc">
+        회원들의 수업 피드백(문장·단어)을 정리해서 엑셀로 내려받아요. 시트는 <b>요약 · 문장 · 단어</b> 3개예요.<br>
+        매달 1일 오전에 <b>지난달 리포트가 자동으로 만들어져 보관</b>돼요. 나중에 회차를 지워도 보관된 리포트는 그대로 남아요.
+      </div>
+
+      <h3 class="sub-h">🗓️ 월별 리포트</h3>
+      <div id="reportMonths"><div class="empty">불러오는 중...</div></div>
+      <div class="imp-grid imp-grid3" style="align-items:end; margin-top:10px;">
+        <div><label for="reportMonthInput">다른 달 리포트 만들기</label><input type="month" id="reportMonthInput" class="date-input"></div>
+        <div><button class="btn-ghost" id="reportMonthBtn" style="width:100%;">📦 이 달 리포트 만들어 보관</button></div>
+        <div></div>
+      </div>
+      <div class="status" id="reportMonthStatus"></div>
+
+      <h3 class="sub-h">📅 기간 정해서 내려받기</h3>
+      <div class="imp-grid imp-grid3" style="align-items:end;">
+        <div><label for="reportFrom">시작일</label><input type="date" id="reportFrom" class="date-input"></div>
+        <div><label for="reportTo">종료일</label><input type="date" id="reportTo" class="date-input"></div>
+        <div><button class="btn-primary" id="reportRangeBtn" style="width:100%;">⬇️ 정리해서 엑셀 받기</button></div>
+      </div>
+      <div class="status" id="reportRangeStatus"></div>
+    </div>
+
     <!-- ============ 회원 관리 ============ -->
     <div class="card">
       <h2>👤 회원 관리</h2>
@@ -353,6 +379,7 @@ async function loadMembers() {
     renderMembers();
     renderMemberSelect();
     loadNvoim();
+    loadReportMonths();
   } catch (e) {
     statusEl.textContent = '⚠️ ' + e.message;
     statusEl.className = 'status error';
@@ -780,6 +807,141 @@ document.getElementById('nvoimRangeBtn').addEventListener('click', async () => {
   await loadNvoim();
   if (memberSelect.value) loadSets();
 });
+
+
+/* ===================== 수업 피드백 리포트 (엑셀) ===================== */
+const REPORT_API = '/api/admin-report';
+let xlsxLoading = null;
+function loadXlsx() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (!xlsxLoading) xlsxLoading = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = () => resolve(window.XLSX);
+    s.onerror = () => { xlsxLoading = null; reject(new Error('엑셀 도구를 불러오지 못했어요. 인터넷 연결을 확인해주세요.')); };
+    document.head.appendChild(s);
+  });
+  return xlsxLoading;
+}
+
+function reportPeriodLabel(report) {
+  return report.month ? report.month : `${report.from}_${report.to}`;
+}
+
+async function downloadReportXlsx(report) {
+  const XLSX = await loadXlsx();
+  const lessons = report.lessons || [];
+
+  // 요약: 회원별
+  const byUser = new Map();
+  lessons.forEach(l => {
+    const u = byUser.get(l.username) || { 회원: l.username, 이름: '', '엔보임 아이디': '', '수업 횟수': 0, '문장 수': 0, '단어 수': 0, dates: [] };
+    if (l.name) u.이름 = l.name;
+    if (l.nvoimId) u['엔보임 아이디'] = l.nvoimId;
+    u['수업 횟수'] += 1;
+    u['문장 수'] += l.sentences.length;
+    u['단어 수'] += l.words.length;
+    u.dates.push(l.date.slice(5).replace('-', '/'));
+    byUser.set(l.username, u);
+  });
+  const summary = [...byUser.values()]
+    .sort((a, b) => (a.회원 < b.회원 ? -1 : 1))
+    .map(u => { const { dates, ...rest } = u; return { ...rest, '수업 날짜': dates.join(', ') }; });
+
+  const sentences = [];
+  const words = [];
+  lessons.forEach(l => {
+    l.sentences.forEach(s => sentences.push({ 날짜: l.date, 회원: l.username, 이름: l.name, '회차 제목': l.title, '틀린 문장': s.x, '고친 문장': s.o }));
+    l.words.forEach(w => words.push({ 날짜: l.date, 회원: l.username, 이름: l.name, 단어: w }));
+  });
+
+  const wb = XLSX.utils.book_new();
+  const add = (rows, name, header, widths) => {
+    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [], { header });
+    if (!rows.length) XLSX.utils.sheet_add_aoa(ws, [header]);
+    ws['!cols'] = widths.map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, ws, name);
+  };
+  add(summary, '요약', ['회원', '이름', '엔보임 아이디', '수업 횟수', '문장 수', '단어 수', '수업 날짜'], [14, 10, 14, 10, 9, 9, 50]);
+  add(sentences, '문장', ['날짜', '회원', '이름', '회차 제목', '틀린 문장', '고친 문장'], [11, 14, 10, 18, 45, 55]);
+  add(words, '단어', ['날짜', '회원', '이름', '단어'], [11, 14, 10, 25]);
+  const data = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `수업피드백_${reportPeriodLabel(report)}.xlsx`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  return { lessons: lessons.length, students: byUser.size, sentences: sentences.length, words: words.length };
+}
+
+async function loadReportMonths() {
+  const el = document.getElementById('reportMonths');
+  try {
+    const { months } = await apiFetch(`${REPORT_API}?list=1`);
+    el.innerHTML = months.length ? '' : '<div class="empty">아직 보관된 월별 리포트가 없어요. 매달 1일에 자동으로 생기고, 아래에서 직접 만들 수도 있어요.</div>';
+    months.forEach((m, i) => {
+      const [y, mo] = m.month.split('-');
+      const row = document.createElement('div');
+      row.className = 'set-item';
+      row.innerHTML = `<div><div class="title">${y}년 ${Number(mo)}월 ${i === 0 ? '<span class="pill">최신</span>' : ''}</div>
+        <div class="meta">수업 ${m.lessons}회 · 학생 ${m.students}명 · ${fmtTime(m.generatedAt)} 정리</div></div>
+        <div style="display:flex; gap:6px;"><button class="btn-primary btn-small dl">⬇️ 엑셀 받기</button><button class="btn-ghost btn-small redo" title="지금 회차 기준으로 다시 정리">다시 만들기</button></div>`;
+      row.querySelector('.dl').addEventListener('click', async (ev) => {
+        const b = ev.currentTarget; b.disabled = true;
+        try { const { report } = await apiFetch(`${REPORT_API}?month=${m.month}`); await downloadReportXlsx(report); }
+        catch (e) { alert('⚠️ ' + e.message); }
+        b.disabled = false;
+      });
+      row.querySelector('.redo').addEventListener('click', () => makeMonthSnapshot(m.month));
+      el.appendChild(row);
+    });
+  } catch (e) {
+    el.innerHTML = `<div class="empty">⚠️ ${escH(e.message)}</div>`;
+  }
+}
+
+async function makeMonthSnapshot(month) {
+  const statusEl = document.getElementById('reportMonthStatus');
+  statusEl.className = 'status'; statusEl.textContent = `${month} 리포트 정리 중...`;
+  try {
+    const { month: info } = await apiFetch(REPORT_API, { method: 'POST', body: JSON.stringify({ action: 'snapshot', month }) });
+    statusEl.className = 'status success';
+    statusEl.textContent = `✅ ${month} 리포트를 보관했어요 (수업 ${info.lessons}회 · 학생 ${info.students}명).`;
+    await loadReportMonths();
+  } catch (e) { statusEl.className = 'status error'; statusEl.textContent = '⚠️ ' + e.message; }
+}
+
+document.getElementById('reportMonthBtn').addEventListener('click', () => {
+  const month = document.getElementById('reportMonthInput').value;
+  if (!month) { const st = document.getElementById('reportMonthStatus'); st.className = 'status error'; st.textContent = '⚠️ 달을 골라주세요.'; return; }
+  makeMonthSnapshot(month);
+});
+
+document.getElementById('reportRangeBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('reportRangeBtn');
+  const statusEl = document.getElementById('reportRangeStatus');
+  const from = document.getElementById('reportFrom').value;
+  const to = document.getElementById('reportTo').value;
+  if (!from || !to || from > to) { statusEl.className = 'status error'; statusEl.textContent = '⚠️ 시작일과 종료일을 확인해주세요.'; return; }
+  btn.disabled = true; statusEl.className = 'status'; statusEl.textContent = '정리 중...';
+  try {
+    const { report } = await apiFetch(`${REPORT_API}?from=${from}&to=${to}`);
+    const r = await downloadReportXlsx(report);
+    statusEl.className = 'status success';
+    statusEl.textContent = `✅ 내려받았어요 — 수업 ${r.lessons}회 · 학생 ${r.students}명 · 문장 ${r.sentences}개 · 단어 ${r.words}개`;
+  } catch (e) { statusEl.className = 'status error'; statusEl.textContent = '⚠️ ' + e.message; }
+  btn.disabled = false;
+});
+
+(function initReportDates() {
+  const kst = new Date(Date.now() + 9 * 3600 * 1000);
+  const first = new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), 1));
+  const prevMonth = new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth() - 1, 1));
+  document.getElementById('reportFrom').value = first.toISOString().slice(0, 10);
+  document.getElementById('reportTo').value = kst.toISOString().slice(0, 10);
+  document.getElementById('reportMonthInput').value = prevMonth.toISOString().slice(0, 7);
+})();
 
 /* ===================== 시작 ===================== */
 if (getToken()) showMain(); else showLogin();

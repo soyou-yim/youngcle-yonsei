@@ -275,6 +275,11 @@ export async function listPending() {
 
 /* ===================== 회차 저장 ===================== */
 
+// 회차에 남겨두는 출처 정보(리포트에서 학생 이름/수업 날짜로 사용)
+function nvoimSource(item) {
+  return { type: 'nvoim', key: item.key, date: item.date, name: item.name, nvoimId: item.nvoimId };
+}
+
 // 같은 제목 회차가 이미 있으면: 같은 수업이면 덮어쓰기, 손으로 붙여넣은 회차면 덮어쓰기, 다른 수업이면 "(2)" 붙여서 새로 만들기
 async function saveLessonAsSet(username, item) {
   const { sentences, words } = parseNvoimFeedback(item.sentenceCorrection, item.mispronouncedWord);
@@ -285,17 +290,17 @@ async function saveLessonAsSet(username, item) {
     const title = n === 1 ? baseTitle : `${baseTitle} (${n})`;
     const same = sets.find(s => s.title === title);
     if (!same) {
-      const set = await createSet(username, { title, sentences, words, source: { type: 'nvoim', key: item.key } });
+      const set = await createSet(username, { title, sentences, words, source: nvoimSource(item) });
       return set.id;
     }
     const full = await getSet(username, same.id);
     const src = full && full.source;
     if (!src || src.key === item.key) {
-      await updateSet(username, same.id, { title, sentences, words, source: { type: 'nvoim', key: item.key } });
+      await updateSet(username, same.id, { title, sentences, words, source: nvoimSource(item) });
       return same.id;
     }
   }
-  const set = await createSet(username, { title: `${baseTitle} (${Date.now() % 1000})`, sentences, words, source: { type: 'nvoim', key: item.key } });
+  const set = await createSet(username, { title: `${baseTitle} (${Date.now() % 1000})`, sentences, words, source: nvoimSource(item) });
   return set.id;
 }
 

@@ -149,3 +149,16 @@ export async function getSet(username, id) {
   const store = setsStore();
   return await store.get(`${uname}/${id}`, { type: 'json' });
 }
+
+// 리포트용: 모든 회원의 회차를 한 번에 읽어옵니다(문장/단어 포함).
+export async function listAllSets() {
+  const store = setsStore();
+  const { blobs } = await store.list();
+  const out = [];
+  // 한꺼번에 너무 많이 요청하지 않도록 50개씩 나눠서 읽기
+  for (let i = 0; i < blobs.length; i += 50) {
+    const chunk = await Promise.all(blobs.slice(i, i + 50).map(b => store.get(b.key, { type: 'json' })));
+    chunk.forEach(r => { if (r) out.push(r); });
+  }
+  return out;
+}
