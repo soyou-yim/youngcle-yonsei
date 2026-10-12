@@ -149,7 +149,7 @@
   let __lastTtsEnd = 0;     // 마지막으로 원어민 음성이 끝난 시각(첫 단어 잘림 방지용)          // stopVoice()가 불릴 때마다 증가 → 진행 중이던 재생이 "중단됨"을 알 수 있게
   // 지금 재생 중인 카드의 '멈춤' 함수(다른 카드를 누르면 앞 카드를 완전히 멈춰 소리 겹침 방지)
   let __activeShadowStop = null;
-  const ENGINE_VERSION = '2026-10-12f'; // 배포할 때마다 바꿔서, 기기마다 최신 코드인지 화면 맨 아래에서 확인할 수 있게 합니다.
+  const ENGINE_VERSION = '2026-10-12g'; // 배포할 때마다 바꿔서, 기기마다 최신 코드인지 화면 맨 아래에서 확인할 수 있게 합니다.
   // 화면 진단 표시(주소 끝 ?debug=1): 띵동·음성이 실제로 재생됐는지/막혔는지 오른쪽 아래에 보여줍니다.
   const __DEBUG_ON = /[?&]debug=1\b/.test(location.search);
   function __dbg(msg) {
@@ -873,7 +873,7 @@ const STT_DEBUG = /[?&]debug=1\b/.test(location.search); // 주소 끝에 &debug
           <option value="0.6">천천히</option>
         </select>
         <span class="repeat-field" style="display:flex; align-items:center; gap:4px;">
-          <input type="number" class="repeat-input" min="1" max="30" value="10" style="width:52px; background:var(--input-bg); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:6px 8px; font-size:0.82rem; font-family:inherit;">
+          <input type="number" class="repeat-input" min="1" max="30" value="20" style="width:52px; background:var(--input-bg); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:6px 8px; font-size:0.82rem; font-family:inherit;">
           <span style="font-size:0.78rem; color:var(--muted);">회 반복</span>
         </span>
         <label class="mic-toggle-label" style="display:flex; align-items:center; gap:4px; font-size:0.78rem; color:var(--muted); cursor:${hasSTT ? 'pointer' : 'not-allowed'};" title="${hasSTT ? '마이크가 안 되거나 오류가 계속 나면 체크를 꺼서 듣기만 연습하세요.' : '이 브라우저는 마이크 녹음을 지원하지 않아요. 최신 Chrome·Edge·Safari로 열어주세요.'}">
