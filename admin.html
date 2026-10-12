@@ -192,8 +192,13 @@
     <div class="card" id="reportCard">
       <h2>📊 수업 피드백 리포트</h2>
       <div class="card-desc">
-        회원들의 수업 피드백(문장·단어)을 정리해서 엑셀로 내려받아요. 시트는 <b>요약 · 문장 · 단어</b> 3개예요.<br>
+        회원들의 수업 피드백(문장·단어)을 정리해서 엑셀로 내려받아요. 시트는 <b>요약 · 문장 · 단어</b> 3개예요. 회원을 고르면 그 회원 리포트(회원이 받는 것과 같은 형식)로 받아요.<br>
         매달 1일 오전에 <b>지난달 리포트가 자동으로 만들어져 보관</b>돼요. 나중에 회차를 지워도 보관된 리포트는 그대로 남아요.
+      </div>
+
+      <div class="field" style="max-width:360px;">
+        <label for="reportMember">누구 리포트?</label>
+        <select class="full" id="reportMember"><option value="">👥 전체 회원</option></select>
       </div>
 
       <h3 class="sub-h">🗓️ 월별 리포트</h3>
@@ -305,6 +310,7 @@ vegetable, particularly"></textarea>
 </div>
 
 <script src="js/shadowing-engine.js"></script>
+<script src="js/feedback-report.js"></script>
 <script>
 const API = {
   adminLogin: '/api/admin-login',
@@ -423,7 +429,16 @@ function renderMembers() {
   });
 }
 
+function renderReportMemberSelect() {
+  const sel = document.getElementById('reportMember');
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML = '<option value="">👥 전체 회원</option>' + membersCache.map(m => `<option value="${m.username}">${m.username}</option>`).join('');
+  if (membersCache.some(m => m.username === current)) sel.value = current;
+}
+
 function renderMemberSelect() {
+  renderReportMemberSelect();
   const sel = document.getElementById('memberSelect');
   const current = sel.value;
   sel.innerHTML = '<option value="">-- 회원을 선택하세요 --</option>';
@@ -811,68 +826,12 @@ document.getElementById('nvoimRangeBtn').addEventListener('click', async () => {
 
 /* ===================== 수업 피드백 리포트 (엑셀) ===================== */
 const REPORT_API = '/api/admin-report';
-let xlsxLoading = null;
-function loadXlsx() {
-  if (window.XLSX) return Promise.resolve(window.XLSX);
-  if (!xlsxLoading) xlsxLoading = new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-    s.onload = () => resolve(window.XLSX);
-    s.onerror = () => { xlsxLoading = null; reject(new Error('엑셀 도구를 불러오지 못했어요. 인터넷 연결을 확인해주세요.')); };
-    document.head.appendChild(s);
-  });
-  return xlsxLoading;
-}
+function selectedReportMember() { return document.getElementById('reportMember').value; }
 
-function reportPeriodLabel(report) {
-  return report.month ? report.month : `${report.from}_${report.to}`;
-}
-
-async function downloadReportXlsx(report) {
-  const XLSX = await loadXlsx();
-  const lessons = report.lessons || [];
-
-  // 요약: 회원별
-  const byUser = new Map();
-  lessons.forEach(l => {
-    const u = byUser.get(l.username) || { 회원: l.username, 이름: '', '엔보임 아이디': '', '수업 횟수': 0, '문장 수': 0, '단어 수': 0, dates: [] };
-    if (l.name) u.이름 = l.name;
-    if (l.nvoimId) u['엔보임 아이디'] = l.nvoimId;
-    u['수업 횟수'] += 1;
-    u['문장 수'] += l.sentences.length;
-    u['단어 수'] += l.words.length;
-    u.dates.push(l.date.slice(5).replace('-', '/'));
-    byUser.set(l.username, u);
-  });
-  const summary = [...byUser.values()]
-    .sort((a, b) => (a.회원 < b.회원 ? -1 : 1))
-    .map(u => { const { dates, ...rest } = u; return { ...rest, '수업 날짜': dates.join(', ') }; });
-
-  const sentences = [];
-  const words = [];
-  lessons.forEach(l => {
-    l.sentences.forEach(s => sentences.push({ 날짜: l.date, 회원: l.username, 이름: l.name, '회차 제목': l.title, '틀린 문장': s.x, '고친 문장': s.o }));
-    l.words.forEach(w => words.push({ 날짜: l.date, 회원: l.username, 이름: l.name, 단어: w }));
-  });
-
-  const wb = XLSX.utils.book_new();
-  const add = (rows, name, header, widths) => {
-    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [], { header });
-    if (!rows.length) XLSX.utils.sheet_add_aoa(ws, [header]);
-    ws['!cols'] = widths.map(w => ({ wch: w }));
-    XLSX.utils.book_append_sheet(wb, ws, name);
-  };
-  add(summary, '요약', ['회원', '이름', '엔보임 아이디', '수업 횟수', '문장 수', '단어 수', '수업 날짜'], [14, 10, 14, 10, 9, 9, 50]);
-  add(sentences, '문장', ['날짜', '회원', '이름', '회차 제목', '틀린 문장', '고친 문장'], [11, 14, 10, 18, 45, 55]);
-  add(words, '단어', ['날짜', '회원', '이름', '단어'], [11, 14, 10, 25]);
-  const data = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-  const blob = new Blob([data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `수업피드백_${reportPeriodLabel(report)}.xlsx`;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  return { lessons: lessons.length, students: byUser.size, sentences: sentences.length, words: words.length };
+// 전체 리포트에서 한 회원 것만 골라내기
+function pickMember(report, username) {
+  const lessons = (report.lessons || []).filter(l => l.username === username);
+  return { ...report, username, name: (lessons.find(l => l.name) || {}).name || '', lessons };
 }
 
 async function loadReportMonths() {
@@ -889,7 +848,17 @@ async function loadReportMonths() {
         <div style="display:flex; gap:6px;"><button class="btn-primary btn-small dl">⬇️ 엑셀 받기</button><button class="btn-ghost btn-small redo" title="지금 회차 기준으로 다시 정리">다시 만들기</button></div>`;
       row.querySelector('.dl').addEventListener('click', async (ev) => {
         const b = ev.currentTarget; b.disabled = true;
-        try { const { report } = await apiFetch(`${REPORT_API}?month=${m.month}`); await downloadReportXlsx(report); }
+        try {
+          const { report } = await apiFetch(`${REPORT_API}?month=${m.month}`);
+          const who = selectedReportMember();
+          if (who) {
+            const r = pickMember(report, who);
+            if (!r.lessons.length) { alert(`${who} 회원은 ${m.month}에 수업 기록이 없어요.`); b.disabled = false; return; }
+            await FeedbackReport.download(r, { mode: 'member' });
+          } else {
+            await FeedbackReport.download(report, { mode: 'all' });
+          }
+        }
         catch (e) { alert('⚠️ ' + e.message); }
         b.disabled = false;
       });
@@ -926,8 +895,9 @@ document.getElementById('reportRangeBtn').addEventListener('click', async () => 
   if (!from || !to || from > to) { statusEl.className = 'status error'; statusEl.textContent = '⚠️ 시작일과 종료일을 확인해주세요.'; return; }
   btn.disabled = true; statusEl.className = 'status'; statusEl.textContent = '정리 중...';
   try {
-    const { report } = await apiFetch(`${REPORT_API}?from=${from}&to=${to}`);
-    const r = await downloadReportXlsx(report);
+    const who = selectedReportMember();
+    const { report } = await apiFetch(`${REPORT_API}?from=${from}&to=${to}` + (who ? `&username=${encodeURIComponent(who)}` : ''));
+    const r = await FeedbackReport.download(report, { mode: who ? 'member' : 'all' });
     statusEl.className = 'status success';
     statusEl.textContent = `✅ 내려받았어요 — 수업 ${r.lessons}회 · 학생 ${r.students}명 · 문장 ${r.sentences}개 · 단어 ${r.words}개`;
   } catch (e) { statusEl.className = 'status error'; statusEl.textContent = '⚠️ ' + e.message; }

@@ -162,3 +162,12 @@ export async function listAllSets() {
   }
   return out;
 }
+
+// 한 회원의 회차 전체(문장/단어 포함)
+export async function listSetsFull(username) {
+  const uname = normUsername(username);
+  const store = setsStore();
+  const { blobs } = await store.list({ prefix: `${uname}/` });
+  const records = await Promise.all(blobs.map(b => store.get(b.key, { type: 'json' })));
+  return records.filter(Boolean);
+}

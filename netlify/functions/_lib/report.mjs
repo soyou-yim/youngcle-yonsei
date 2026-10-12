@@ -1,7 +1,7 @@
 // 수업 피드백 리포트 — 기간별로 모든 회원의 회차(문장/단어)를 모아 정리합니다.
 // 매달 1일에는 지난달 리포트를 Netlify Blobs에 따로 보관해서(스냅샷) 나중에 회차가 지워져도 내려받을 수 있습니다.
 import { getStore } from '@netlify/blobs';
-import { listAllSets } from './store.mjs';
+import { listAllSets, listSetsFull } from './store.mjs';
 
 function reportStore() {
   return getStore({ name: 'feedback-reports', consistency: 'strong' });
@@ -28,25 +28,52 @@ function clean(s) {
     .trim();
 }
 
+function toLesson(set) {
+  const src = set.source || {};
+  return {
+    date: lessonDateOf(set),
+    username: set.username,
+    name: src.name || '',
+    nvoimId: src.nvoimId || '',
+    title: set.title || '',
+    origin: src.type === 'nvoim' ? '엔보임' : '직접 입력',
+    sentences: (set.sentences || []).map(s => ({ x: s.hideX ? '' : clean(s.x), o: clean(s.o) })).filter(s => s.o),
+    words: (set.words || []).map(clean).filter(Boolean),
+  };
+}
+
+const byDate = (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.title < b.title ? -1 : 1);
+
+/* ---------- 회원 본인용 ---------- */
+
+// 회원의 월 목록: [{ month, lessons, sentences, words }] (최신 달 먼저)
+export async function memberMonths(username) {
+  const lessons = (await listSetsFull(username)).map(toLesson).filter(l => l.date);
+  const map = new Map();
+  lessons.forEach(l => {
+    const m = l.date.slice(0, 7);
+    const v = map.get(m) || { month: m, lessons: 0, sentences: 0, words: 0 };
+    v.lessons++; v.sentences += l.sentences.length; v.words += l.words.length;
+    map.set(m, v);
+  });
+  return [...map.values()].sort((a, b) => (a.month < b.month ? 1 : -1));
+}
+
+// 회원 본인의 기간 리포트
+export async function buildMemberReport(username, from, to) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) throw new Error('기간을 확인해주세요.');
+  const lessons = (await listSetsFull(username)).map(toLesson).filter(l => l.date && l.date >= from && l.date <= to);
+  lessons.sort(byDate);
+  const name = (lessons.find(l => l.name) || {}).name || '';
+  return { username, name, from, to, generatedAt: new Date().toISOString(), lessons };
+}
+
+/* ---------- 관리자용(전체) ---------- */
+
 export async function buildReport(from, to) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) throw new Error('기간을 확인해주세요.');
   const sets = await listAllSets();
-  const lessons = [];
-  for (const set of sets) {
-    const date = lessonDateOf(set);
-    if (!date || date < from || date > to) continue;
-    const src = set.source || {};
-    lessons.push({
-      date,
-      username: set.username,
-      name: src.name || '',
-      nvoimId: src.nvoimId || '',
-      title: set.title || '',
-      origin: src.type === 'nvoim' ? '엔보임' : '직접 입력',
-      sentences: (set.sentences || []).map(s => ({ x: s.hideX ? '' : clean(s.x), o: clean(s.o) })).filter(s => s.o),
-      words: (set.words || []).map(clean).filter(Boolean),
-    });
-  }
+  const lessons = sets.map(toLesson).filter(l => l.date && l.date >= from && l.date <= to);
   // 직접 붙여넣은 회차는 이름이 없으니, 같은 회원의 다른 회차에 있는 이름으로 채움
   const names = {};
   lessons.forEach(l => { if (l.name) names[l.username] = l.name; });

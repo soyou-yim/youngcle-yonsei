@@ -127,6 +127,16 @@
       <button class="btn-ghost btn-small" id="logoutBtn">로그아웃</button>
     </div>
 
+    <div class="card" id="reportCard">
+      <h2>📊 월별 수업 리포트</h2>
+      <div class="card-desc">한 달 동안 받은 수업 피드백(고친 문장·발음 단어)을 엑셀 파일로 정리해서 내려받아요.</div>
+      <div class="row" style="margin-top:0;">
+        <select class="full" id="reportMonthSelect" style="flex:1; min-width:200px;"><option value="">불러오는 중...</option></select>
+        <button class="btn-primary" id="reportDownloadBtn">⬇️ 리포트 받기</button>
+      </div>
+      <div class="status" id="reportStatus"></div>
+    </div>
+
     <div class="card">
       <h2>🗂️ 회차 선택</h2>
       <div class="card-desc">선생님이 등록해준 수업 회차 중 연습할 회차를 골라주세요. (최신 회차가 먼저 보여요)</div>
@@ -145,8 +155,9 @@
 </div>
 
 <script src="js/shadowing-engine.js"></script>
+<script src="js/feedback-report.js"></script>
 <script>
-const API = { login: '/api/member-login', sets: '/api/member-sets' };
+const API = { login: '/api/member-login', sets: '/api/member-sets', report: '/api/member-report' };
 const TOKEN_KEY = 'shadowing_member_token';
 const USERNAME_KEY = 'shadowing_member_username';
 
@@ -179,6 +190,7 @@ function showPractice() {
   document.getElementById('practiceArea').classList.remove('hidden');
   document.getElementById('welcomeUsername').textContent = localStorage.getItem(USERNAME_KEY) || '';
   loadSets();
+  loadReportMonths();
 }
 
 document.getElementById('loginBtn').addEventListener('click', async () => {
@@ -256,6 +268,56 @@ function renderSet(set) {
   // js/shadowing-engine.js의 renderPracticeSet()으로 공용화했습니다.
   ShadowingEngine.renderPracticeSet(contentArea, set);
 }
+
+/* ===================== 월별 수업 리포트 ===================== */
+
+const reportMonthSelect = document.getElementById('reportMonthSelect');
+
+async function loadReportMonths() {
+  const statusEl = document.getElementById('reportStatus');
+  const btn = document.getElementById('reportDownloadBtn');
+  try {
+    const { months } = await apiFetch(`${API.report}?months=1`);
+    const kst = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 7);
+    reportMonthSelect.innerHTML = '';
+    if (!months.length) {
+      reportMonthSelect.innerHTML = '<option value="">아직 수업 기록이 없어요</option>';
+      btn.disabled = true;
+      return;
+    }
+    months.forEach(m => {
+      const [y, mo] = m.month.split('-');
+      const opt = document.createElement('option');
+      opt.value = m.month;
+      opt.textContent = `${y}년 ${Number(mo)}월${m.month === kst ? ' (진행 중)' : ''} · 수업 ${m.lessons}회 · 문장 ${m.sentences} · 단어 ${m.words}`;
+      reportMonthSelect.appendChild(opt);
+    });
+    // 지난달이 있으면 기본으로 선택(매달 초에 지난달 리포트를 받기 쉽게)
+    const prev = new Date(Date.UTC(Number(kst.slice(0, 4)), Number(kst.slice(5, 7)) - 2, 1)).toISOString().slice(0, 7);
+    if (months.some(m => m.month === prev)) reportMonthSelect.value = prev;
+    btn.disabled = false;
+    statusEl.textContent = '';
+  } catch (e) {
+    reportMonthSelect.innerHTML = '<option value="">불러오지 못했어요</option>';
+    statusEl.textContent = '⚠️ ' + e.message; statusEl.className = 'status error';
+  }
+}
+
+document.getElementById('reportDownloadBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('reportDownloadBtn');
+  const statusEl = document.getElementById('reportStatus');
+  const month = reportMonthSelect.value;
+  if (!month) return;
+  btn.disabled = true; statusEl.className = 'status'; statusEl.textContent = '리포트 만드는 중...';
+  try {
+    const { report } = await apiFetch(`${API.report}?month=${encodeURIComponent(month)}`);
+    const r = await FeedbackReport.download(report, { mode: 'member' });
+    statusEl.textContent = `✅ 내려받았어요 — 수업 ${r.lessons}회 · 문장 ${r.sentences}개 · 단어 ${r.words}개`;
+  } catch (e) {
+    statusEl.textContent = '⚠️ ' + e.message; statusEl.className = 'status error';
+  }
+  btn.disabled = false;
+});
 
 /* ===================== 시작 ===================== */
 (function checkSecureContext(){

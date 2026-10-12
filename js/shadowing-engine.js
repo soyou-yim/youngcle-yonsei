@@ -135,6 +135,9 @@
   let __lastTtsEnd = 0;     // 마지막으로 원어민 음성이 끝난 시각(첫 단어 잘림 방지용)          // stopVoice()가 불릴 때마다 증가 → 진행 중이던 재생이 "중단됨"을 알 수 있게
   // 지금 재생 중인 카드의 '멈춤' 함수(다른 카드를 누르면 앞 카드를 완전히 멈춰 소리 겹침 방지)
   let __activeShadowStop = null;
+  // 음성 엔진 깨우기용 문장. 예전엔 'Okay.'였는데 일부 기기(안드로이드 등)는 볼륨 설정을 무시해서
+  // "okay"가 작게 들렸어요. 쉼표는 소리 없는 짧은 쉼으로 읽혀서 엔진만 깨우고 단어는 들리지 않아요.
+  const WARMUP_TEXT = ',';
   // 페이지에서 처음 화면을 터치(또는 클릭)하는 순간, 거의 안 들리는 짧은 음성으로 태블릿 음성 엔진을 미리 깨워 둡니다.
   // (태블릿은 엔진이 처음 켜질 때 첫 단어가 잘리는 경우가 있어서, 버튼을 누르기 전에 준비시켜 두는 거예요)
   (function prewarmTTSOnFirstTouch() {
@@ -145,7 +148,7 @@
       try {
         const synth = window.speechSynthesis;
         if (synth.speaking || synth.pending) return;
-        const u = new SpeechSynthesisUtterance('Okay.');
+        const u = new SpeechSynthesisUtterance(WARMUP_TEXT);
         u.lang = 'en-US'; u.volume = 0.01; u.rate = 1.5;
         const v = pickEnglishVoice(); if (v) u.voice = v;
         __ttsKeepAlive.push(u);
@@ -234,7 +237,7 @@
       const fin = () => { if (!done) { done = true; clearTimeout(timer); resolve(); } };
       const timer = setTimeout(fin, 2500);
       try {
-        const u = new SpeechSynthesisUtterance('Okay.');
+        const u = new SpeechSynthesisUtterance(WARMUP_TEXT);
         u.lang = 'en-US'; u.volume = 0.01; u.rate = 1.5;
         const v = pickEnglishVoice(); if (v) u.voice = v;
         __ttsKeepAlive.push(u);
@@ -528,7 +531,7 @@
         if (gen !== __voiceGen) return;
         // 소리 없는(볼륨 0) 짧은 준비 음성을 바로 앞에 줄 세워서, 스피커·음성 엔진이 이미 켜진 상태로 문장이 시작되게 합니다.
         try {
-          const warm = new SpeechSynthesisUtterance('Okay.');
+          const warm = new SpeechSynthesisUtterance(WARMUP_TEXT);
           warm.lang = 'en-US'; warm.volume = 0.01; warm.rate = 1.5; // 0이면 엔진이 건너뛰어서 효과가 없어요
           const v = pickEnglishVoice(); if (v) warm.voice = v;
           __ttsKeepAlive.push(warm);
