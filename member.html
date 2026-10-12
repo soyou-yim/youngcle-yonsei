@@ -155,10 +155,10 @@
   </footer>
 </div>
 
-<script src="js/shadowing-engine.js?v=20261012e"></script>
-<script src="js/feedback-report.js?v=20261012e"></script>
+<script src="js/shadowing-engine.js?v=20261012f"></script>
+<script src="js/feedback-report.js?v=20261012f"></script>
 <script>
-const API = { login: '/api/member-login', sets: '/api/member-sets', report: '/api/member-report' };
+const API = { login: '/api/member-login', sets: '/api/member-sets', report: '/api/member-report', practice: '/api/member-practice' };
 const TOKEN_KEY = 'shadowing_member_token';
 const USERNAME_KEY = 'shadowing_member_username';
 
@@ -215,7 +215,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
 [document.getElementById('usernameInput'), document.getElementById('passwordInput')].forEach(el => {
   el.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('loginBtn').click(); });
 });
-document.getElementById('logoutBtn').addEventListener('click', () => { clearSession(); showLogin(); });
+document.getElementById('logoutBtn').addEventListener('click', async () => { try { await flushPractice(); } catch (e) {} clearSession(); showLogin(); });
 
 /* ===================== 회차 목록/내용 ===================== */
 
@@ -267,8 +267,54 @@ async function loadSetContent(id) {
 function renderSet(set) {
   // 카드 렌더링(문장/단어/요약)은 admin.html의 미리보기와 완전히 같은 화면을 쓰도록
   // js/shadowing-engine.js의 renderPracticeSet()으로 공용화했습니다.
-  ShadowingEngine.renderPracticeSet(contentArea, set);
+  // 연습 반복 한 번마다 기록을 모아 두었다가 서버로 보내요(관리자 페이지 "📊 연습 기록"에서 확인).
+  ShadowingEngine.renderPracticeSet(contentArea, set, { onAttempt: rec => queuePractice(set.id, rec) });
 }
+
+/* ===================== 연습 기록 보내기 ===================== */
+// 반복할 때마다 바로 보내지 않고 몇 초 모아서 한 번에 보냅니다. 화면을 닫거나 다른 앱으로 넘어가도 남은 기록을 보내요.
+let practiceQueue = [];
+let practiceTimer = null;
+let practiceSending = false;
+
+function queuePractice(setId, rec) {
+  if (!setId) return;
+  practiceQueue.push(Object.assign({ setId }, rec));
+  if (practiceQueue.length >= 20) { flushPractice(); return; }
+  clearTimeout(practiceTimer);
+  practiceTimer = setTimeout(flushPractice, 5000);
+}
+
+async function flushPractice(keepalive) {
+  clearTimeout(practiceTimer);
+  if (!practiceQueue.length || !getToken()) return;
+  if (practiceSending && !keepalive) { practiceTimer = setTimeout(flushPractice, 3000); return; }
+  const batch = practiceQueue; practiceQueue = [];
+  const bySet = {};
+  batch.forEach(r => { (bySet[r.setId] = bySet[r.setId] || []).push(r); });
+  practiceSending = true;
+  try {
+    for (const setId of Object.keys(bySet)) {
+      const attempts = bySet[setId].map(r => { const c = Object.assign({}, r); delete c.setId; return c; });
+      try {
+        const res = await fetch(API.practice, {
+          method: 'POST', keepalive: !!keepalive,
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+          body: JSON.stringify({ setId, attempts }),
+        });
+        // 서버 문제(5xx)나 연결 문제면 다음에 다시 보내도록 되돌려 둡니다.
+        if (res.status >= 500) practiceQueue = bySet[setId].concat(practiceQueue).slice(-500);
+      } catch (e) {
+        practiceQueue = bySet[setId].concat(practiceQueue).slice(-500);
+      }
+    }
+  } finally {
+    practiceSending = false;
+    if (practiceQueue.length && !keepalive) { clearTimeout(practiceTimer); practiceTimer = setTimeout(flushPractice, 15000); }
+  }
+}
+window.addEventListener('pagehide', () => flushPractice(true));
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushPractice(true); });
 
 /* ===================== 월별 수업 리포트 ===================== */
 
