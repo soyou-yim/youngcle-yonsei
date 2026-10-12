@@ -204,7 +204,7 @@
       <h3 class="sub-h">🗓️ 월별 리포트</h3>
       <div id="reportMonths"><div class="empty">불러오는 중...</div></div>
       <div class="imp-grid imp-grid3" style="align-items:end; margin-top:10px;">
-        <div><label for="reportMonthInput">다른 달 리포트 만들기</label><input type="month" id="reportMonthInput" class="date-input"></div>
+        <div><label for="reportMonthInput">다른 달 리포트 만들기</label><input type="month" id="reportMonthInput" class="date-input" placeholder="예: 2026-09" pattern="\d{4}-\d{2}"></div>
         <div><button class="btn-ghost" id="reportMonthBtn" style="width:100%;">📦 이 달 리포트 만들어 보관</button></div>
         <div></div>
       </div>
@@ -882,8 +882,11 @@ async function makeMonthSnapshot(month) {
 }
 
 document.getElementById('reportMonthBtn').addEventListener('click', () => {
-  const month = document.getElementById('reportMonthInput').value;
-  if (!month) { const st = document.getElementById('reportMonthStatus'); st.className = 'status error'; st.textContent = '⚠️ 달을 골라주세요.'; return; }
+  // Firefox·Safari는 달력 대신 글자 칸으로 보여서 "2026-9", "2026.09" 같은 입력도 받아줍니다.
+  const raw = document.getElementById('reportMonthInput').value.trim();
+  const mm = /^(\d{4})\D?(\d{1,2})$/.exec(raw);
+  const month = mm && Number(mm[2]) >= 1 && Number(mm[2]) <= 12 ? `${mm[1]}-${String(mm[2]).padStart(2, '0')}` : '';
+  if (!month) { const st = document.getElementById('reportMonthStatus'); st.className = 'status error'; st.textContent = '⚠️ 달을 "2026-09" 형식으로 골라주세요.'; return; }
   makeMonthSnapshot(month);
 });
 

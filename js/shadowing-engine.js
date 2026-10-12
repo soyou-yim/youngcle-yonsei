@@ -106,7 +106,21 @@
   /* ===================== TTS/STT 지원 여부 ===================== */
   const hasTTS = true; // 기기 음성 엔진이 없어도 인터넷 음성(/api/tts)으로 들을 수 있어서 항상 true
   const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const hasSTT = !!SpeechRecognitionCtor;
+  // 브라우저 내장 음성 인식(SpeechRecognition)은 Google 음성 서버를 쓰는 '진짜 Chrome'에서만 안정적이에요.
+  // Edge·웨일·Brave·삼성 인터넷·Opera는 같은 기능이 있어도 Google 서버를 못 써서 오류(network 등)가 나고,
+  // Safari는 Siri 설정에 따라 자주 실패하며, Firefox는 기능 자체가 없어요.
+  // → Chrome이 아니면 사이트가 직접 녹음해서 서버(/api/stt)에서 받아쓰는 방식을 씁니다.
+  function isGoogleChrome() {
+    const ua = navigator.userAgent || '';
+    if (/Edg\/|EdgA\/|EdgiOS|OPR\/|Opera|SamsungBrowser|Whale|YaBrowser|Vivaldi|CriOS|FxiOS|Firefox|NAVER|KAKAOTALK|Instagram|FBAN|FBAV|Line\//i.test(ua)) return false;
+    const brands = navigator.userAgentData && navigator.userAgentData.brands;
+    if (brands && brands.length) return brands.some(b => b.brand === 'Google Chrome');
+    return /Chrome\/\d+/.test(ua) && navigator.vendor === 'Google Inc.' && !(navigator.brave);
+  }
+  const isChrome = isGoogleChrome();
+  const canBrowserSTT = !!SpeechRecognitionCtor && isChrome;
+  const canServerSTT = !!(window.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  const hasSTT = canBrowserSTT || canServerSTT || !!SpeechRecognitionCtor;
   const isMobileDevice = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
     || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1) // iPadOS
     // 안드로이드 태블릿 Chrome은 기본으로 '데스크톱 사이트' 모드라서 자신을 Linux PC라고 소개해요.
@@ -166,9 +180,13 @@
   function __isEnglishVoice(v) { return /^en([-_]|$)/i.test(v.lang || ''); }
   function pickEnglishVoice() {
     if (!('speechSynthesis' in window)) return null;
-    const voices = window.speechSynthesis.getVoices() || [];
+    const all = window.speechSynthesis.getVoices() || [];
+    // Mac(Safari)에는 영어 목록 맨 앞에 "Albert", "Bubbles" 같은 장난감·로봇 목소리가 있어서 빼고 고릅니다.
+    const NOVELTY = /^(Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Good News|Jester|Organ|Superstar|Trinoids|Whisper|Wobble|Zarvox|Fred|Junior|Kathy|Ralph|Grandma|Grandpa|Eddy|Flo|Reed|Rocko|Sandy|Shelley)\b/i;
+    const voices = all.filter(v => !NOVELTY.test(v.name || ''));
+    const lang = v => (v.lang || '').replace('_', '-').toLowerCase(); // 일부 Safari는 en_US 형식
     // 원래 사이트와 같은 기준: 첫 번째 미국 영어(en-US) 음성 → 없으면 아무 영어 음성
-    return voices.find(v => v.lang === 'en-US') || voices.find(v => (v.lang || '').startsWith('en')) || null;
+    return voices.find(v => lang(v) === 'en-us') || voices.find(v => lang(v).startsWith('en')) || null;
   }
   function __waitVoices(ms) {
     return new Promise(resolve => {
@@ -554,7 +572,6 @@
   // 주소 끝에 ?stt=server 를 붙이면 처음부터 서버 받아쓰기로 테스트할 수 있어요.
   const STT_SERVER_ENDPOINT = '/api/stt';
 const STT_DEBUG = /[?&]debug=1\b/.test(location.search); // 주소 끝에 &debug=1 → 실패 원인을 화면에 표시
-  const canServerSTT = !!(window.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
   // 태블릿·휴대폰은 처음부터 서버 받아쓰기를 씁니다. 안드로이드 Chrome 내장 인식은 Google 음성 서비스 상태,
   // USB 이어폰 등에 따라 소리를 못 받는 경우가 잦았어요. PC는 Chrome 내장 인식을 그대로 씁니다.
   // (주소 끝 ?stt=server → 서버 받아쓰기 강제, ?stt=browser → Chrome 내장 인식 강제)
@@ -564,9 +581,10 @@ const STT_DEBUG = /[?&]debug=1\b/.test(location.search); // 주소 끝에 &debug
   function __sttRememberedServer() { try { return localStorage.getItem(__STT_MEMO_KEY) === '1'; } catch (e) { return false; } }
   function __sttRememberServer() { try { localStorage.setItem(__STT_MEMO_KEY, '1'); } catch (e) {} }
   let __sttMode = !canServerSTT ? 'browser'
+    : !SpeechRecognitionCtor ? 'server'
     : /[?&]stt=server\b/.test(location.search) ? 'server'
     : /[?&]stt=browser\b/.test(location.search) ? 'browser'
-    : (isMobileDevice || __sttRememberedServer() ? 'server' : 'browser');
+    : (isMobileDevice || !canBrowserSTT || __sttRememberedServer() ? 'server' : 'browser');
   let __sttNoSpeechStreak = 0;
   let __sttActive = null; // 진행 중인 서버 받아쓰기 녹음(중단 버튼용)
 
@@ -575,6 +593,12 @@ const STT_DEBUG = /[?&]debug=1\b/.test(location.search); // 주소 끝에 &debug
   function noteBrowserSTTResult(result) {
     if (__sttMode !== 'browser') return false;
     if (result.ok) { __sttNoSpeechStreak = 0; return false; }
+    // 인식 서비스 자체가 안 되는 오류는 다시 해도 소용없으니 바로 서버 받아쓰기로 바꾸고 기억합니다.
+    if (canServerSTT && ['network', 'service-not-allowed', 'language-not-supported', 'start-failed'].includes(result.error)) {
+      __sttMode = 'server';
+      __sttRememberServer();
+      return true;
+    }
     if (result.error === 'no-speech' || result.error === 'audio-capture') __sttNoSpeechStreak++;
     // 터치 화면 기기(태블릿·휴대폰)는 한 번만 실패해도 바로 서버 받아쓰기로 바꾸고 그 기기에 기억합니다.
     // (기기 판별이 빗나가 태블릿이 PC로 보이는 경우까지 대비) PC는 2번 연속 실패 시에만 바꿉니다.
@@ -718,7 +742,7 @@ const STT_DEBUG = /[?&]debug=1\b/.test(location.search); // 주소 끝에 &debug
           <input type="number" class="repeat-input" min="1" max="30" value="10" style="width:52px; background:var(--input-bg); border:1px solid var(--border); border-radius:8px; color:var(--text); padding:6px 8px; font-size:0.82rem; font-family:inherit;">
           <span style="font-size:0.78rem; color:var(--muted);">회 반복</span>
         </span>
-        <label class="mic-toggle-label" style="display:flex; align-items:center; gap:4px; font-size:0.78rem; color:var(--muted); cursor:${hasSTT ? 'pointer' : 'not-allowed'};" title="${hasSTT ? '마이크가 안 되거나 오류가 계속 나면 체크를 꺼서 듣기만 연습하세요.' : '이 브라우저는 음성 인식을 지원하지 않습니다(Chrome 권장)'}">
+        <label class="mic-toggle-label" style="display:flex; align-items:center; gap:4px; font-size:0.78rem; color:var(--muted); cursor:${hasSTT ? 'pointer' : 'not-allowed'};" title="${hasSTT ? '마이크가 안 되거나 오류가 계속 나면 체크를 꺼서 듣기만 연습하세요.' : '이 브라우저는 마이크 녹음을 지원하지 않아요. 최신 Chrome·Edge·Safari로 열어주세요.'}">
           <input type="checkbox" class="mic-toggle" ${hasSTT ? 'checked' : 'disabled'}> 🎙️ 마이크 사용
         </label>
         <button class="btn-primary btn-small practice-btn" ${hasTTS ? '' : 'disabled title="이 브라우저는 TTS를 지원하지 않습니다"'}>▶ 연습 시작</button>
