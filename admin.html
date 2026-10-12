@@ -165,6 +165,14 @@
 
       <h3 class="sub-h">⚠️ 회원 선택 필요 <span class="pill" id="nvoimPendingCount">0</span></h3>
       <div class="card-desc" style="margin-bottom:6px;">youngcle 회원과 아직 연결되지 않은 학생이에요. 회원을 고르면 저장되고, 다음부터는 자동으로 저장돼요. (회원이 없으면 위 회원 관리에서 먼저 등록)</div>
+      <div id="nvoimBulkBar" class="row" style="margin:4px 0 2px; align-items:center; display:none;">
+        <label style="display:flex; align-items:center; gap:6px; margin:0; font-weight:700; color:var(--text); cursor:pointer;">
+          <input type="checkbox" id="nvoimSelectAll" style="width:auto;"> 전체 선택
+        </label>
+        <button class="btn-ghost btn-small" id="nvoimDismissSelBtn" disabled>🗑 선택 항목 넘기기 (<span id="nvoimSelCount">0</span>)</button>
+        <button class="btn-danger btn-small" id="nvoimDismissAllBtn">🗑 전체 넘기기</button>
+        <span class="status" id="nvoimBulkStatus" style="margin:0;"></span>
+      </div>
       <div id="nvoimPending"></div>
 
       <div class="row" style="margin-top:16px; align-items:center;">
@@ -671,6 +679,9 @@ function renderNvoim() {
   // 회원 선택 필요
   const pendEl = document.getElementById('nvoimPending');
   document.getElementById('nvoimPendingCount').textContent = nvoimData.pending.length;
+  document.getElementById('nvoimBulkBar').style.display = nvoimData.pending.length ? 'flex' : 'none';
+  document.getElementById('nvoimSelectAll').checked = false;
+  updateNvoimSel();
   pendEl.innerHTML = nvoimData.pending.length ? '' : '<div class="empty">없어요 👍</div>';
   const memberOptions = membersCache.map(m => `<option value="${escH(m.username)}">${escH(m.username)}</option>`).join('');
   nvoimData.pending.forEach(p => {
@@ -679,6 +690,7 @@ function renderNvoim() {
     row.className = 'imp-row';
     row.innerHTML = `
       <div class="imp-head">
+        <input type="checkbox" class="imp-sel" data-key="${escH(p.key)}" style="width:auto;">
         <span class="imp-name">${escH(p.name)}</span>
         <span class="imp-id">엔보임 ${escH(p.nvoimId)} · ${escH(p.date)} · ${escH(p.account || '')}</span>
         <span class="imp-state"></span>
@@ -730,6 +742,44 @@ function renderNvoim() {
     mapEl.appendChild(el);
   });
 }
+
+
+/* ---- '회원 선택 필요' 여러 개 한꺼번에 넘기기 ---- */
+function nvoimSelectedKeys() { return [...document.querySelectorAll('#nvoimPending .imp-sel:checked')].map(c => c.dataset.key); }
+function updateNvoimSel() {
+  const n = nvoimSelectedKeys().length;
+  document.getElementById('nvoimSelCount').textContent = n;
+  document.getElementById('nvoimDismissSelBtn').disabled = !n;
+}
+document.getElementById('nvoimPending').addEventListener('change', (e) => { if (e.target.classList.contains('imp-sel')) updateNvoimSel(); });
+document.getElementById('nvoimSelectAll').addEventListener('change', (e) => {
+  document.querySelectorAll('#nvoimPending .imp-sel').forEach(c => { c.checked = e.target.checked; });
+  updateNvoimSel();
+});
+async function nvoimDismissMany(payload, label) {
+  const st = document.getElementById('nvoimBulkStatus');
+  const btns = [document.getElementById('nvoimDismissSelBtn'), document.getElementById('nvoimDismissAllBtn')];
+  btns.forEach(b => b.disabled = true);
+  st.className = 'status'; st.textContent = '넘기는 중...';
+  try {
+    const r = await apiFetch(NVOIM_API, { method: 'POST', body: JSON.stringify({ action: 'dismiss-many', ...payload }) });
+    st.className = 'status success'; st.textContent = `✅ ${r.count}개를 넘겼어요.`;
+    await loadNvoim();
+  } catch (e) { st.className = 'status error'; st.textContent = '⚠️ ' + e.message; }
+  btns.forEach(b => b.disabled = false); updateNvoimSel();
+}
+document.getElementById('nvoimDismissSelBtn').addEventListener('click', () => {
+  const keys = nvoimSelectedKeys();
+  if (!keys.length) return;
+  if (!confirm(`선택한 ${keys.length}개를 저장하지 않고 넘길까요?\n넘긴 피드백은 다시 가져오지 않아요.`)) return;
+  nvoimDismissMany({ keys });
+});
+document.getElementById('nvoimDismissAllBtn').addEventListener('click', () => {
+  const n = (nvoimData.pending || []).length;
+  if (!n) return;
+  if (!confirm(`'회원 선택 필요' ${n}개를 모두 저장하지 않고 넘길까요?\n넘긴 피드백은 다시 가져오지 않아요.`)) return;
+  nvoimDismissMany({ all: true });
+});
 
 document.getElementById('nvoimAddBtn').addEventListener('click', async () => {
   const statusEl = document.getElementById('nvoimAccountStatus');
