@@ -434,7 +434,7 @@
   }
   // ── "띵동" 시작음 ──
   // 버튼을 누른 뒤 첫 원어민 음성 바로 앞에 "띵동"을 넣어 줍니다. 진짜 소리라서 USB·블루투스 이어폰도 확실히 깨워요.
-  let __dingPending = false; // 버튼을 누르면 true → 첫 원어민 음성에서 한 번만 사용
+  let __dingPending = false; // 재생 직전에 true → 그 원어민 음성 앞에 '띵동' 한 번(반복마다 다시 켬)
   function __dingSamples(sr) {
     const notes = [[659.25, 0.32], [523.25, 0.5]]; // 띵(미) → 동(도)
     const total = Math.round(sr * (notes[0][1] + notes[1][1]));
@@ -927,6 +927,7 @@ const STT_DEBUG = /[?&]debug=1\b/.test(location.search); // 주소 끝에 &debug
       for (let i = 1; i <= count; i++) {
         if (runState.stopped) break;
         practiceBtn.textContent = `⏹ 정지 (${i}/${count})`;
+        __dingPending = true; // 반복할 때마다 원어민 음성 앞에 '띵동'
         await speakOnce(parseFloat(rateSelect.value) || rate); // 반복마다 지금 선택된 속도로(반복 중에 바꿔도 바로 반영)
         if (runState.stopped) break;
 
