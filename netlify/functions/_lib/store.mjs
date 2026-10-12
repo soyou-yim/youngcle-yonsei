@@ -78,7 +78,7 @@ export async function verifyMemberLogin(username, password) {
 
 /* ===================== 쉐도잉 세트(회차별 문장/단어) ===================== */
 
-export async function createSet(username, { title, sentences, words }) {
+export async function createSet(username, { title, sentences, words, source }) {
   const uname = normUsername(username);
   const id = crypto.randomUUID();
   const createdAt = new Date().toISOString();
@@ -90,6 +90,7 @@ export async function createSet(username, { title, sentences, words }) {
     sentences: Array.isArray(sentences) ? sentences : [],
     words: Array.isArray(words) ? words : [],
   };
+  if (source) data.source = source; // 예: { type:'nvoim', key } — 엔보임 자동 가져오기로 만든 회차 표시
   const store = setsStore();
   await store.setJSON(`${uname}/${id}`, data, {
     metadata: { title: data.title, createdAt, sentenceCount: data.sentences.length, wordCount: data.words.length },
@@ -97,7 +98,7 @@ export async function createSet(username, { title, sentences, words }) {
   return data;
 }
 
-export async function updateSet(username, id, { title, sentences, words }) {
+export async function updateSet(username, id, { title, sentences, words, source }) {
   const uname = normUsername(username);
   const store = setsStore();
   const key = `${uname}/${id}`;
@@ -110,6 +111,7 @@ export async function updateSet(username, id, { title, sentences, words }) {
     words: Array.isArray(words) ? words : existing.words,
     updatedAt: new Date().toISOString(),
   };
+  if (source) updated.source = source;
   await store.setJSON(key, updated, {
     metadata: { title: updated.title, createdAt: updated.createdAt, sentenceCount: updated.sentences.length, wordCount: updated.words.length },
   });
