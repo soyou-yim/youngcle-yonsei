@@ -127,7 +127,23 @@ class NvoimSession {
     }
   }
 
-  async request(path, { method = 'GET', form } = {}) {
+  // 네트워크 오류(연결 끊김 등)는 최대 3번까지 다시 시도합니다.
+  async request(path, { method = 'GET', form, step = '' } = {}) {
+    let lastErr;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        return await this._requestOnce(path, { method, form });
+      } catch (e) {
+        lastErr = e;
+        if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 700));
+      }
+    }
+    const c = lastErr && lastErr.cause;
+    const why = (c && (c.code || c.message)) || (lastErr && lastErr.name === 'TimeoutError' ? '응답 시간 초과' : (lastErr && lastErr.message)) || 'unknown';
+    throw new Error(`엔보임 접속 오류${step ? ' (' + step + ')' : ''}: ${why}`);
+  }
+
+  async _requestOnce(path, { method, form }) {
     const headers = { 'User-Agent': UA, 'Accept-Language': 'ko-KR,ko;q=0.9', Referer: NVOIM_BASE + '/Lecture/OneStop.asp' };
     if (this.cookies.size) headers.Cookie = [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; ');
     let body;
@@ -144,8 +160,8 @@ class NvoimSession {
 
   async login(userId, password) {
     // 세션 쿠키를 먼저 받기 위해 로그인 페이지를 한 번 엽니다.
-    await this.request('/Member/Login.asp');
-    const r = await this.request('/Member/Process/loginProc.asp', { method: 'POST', form: { UserID: userId, Passwd: password } });
+    await this.request('/Member/Login.asp', { step: '로그인 페이지' });
+    const r = await this.request('/Member/Process/loginProc.asp', { method: 'POST', form: { UserID: userId, Passwd: password }, step: '로그인' });
     const result = xmlTag(r.text, 'Result');
     if (result === 'Complete' || result === 'CompleteNoneCenter') return;
     if (!result) throw new Error(`엔보임 로그인 응답을 읽지 못했어요 (HTTP ${r.status}). 해외 접속이 막혔을 수 있어요.`);
@@ -158,7 +174,7 @@ class NvoimSession {
 
   // 날짜별 원스톱 학생 목록: [{ F_STDT_ID, F_STDT_NM, EvaluationSeq, ... }]
   async listLessons(date) {
-    const r = await this.request(`/Lecture/OneStop.asp?SearchDate=${encodeURIComponent(date)}&SearchID=`);
+    const r = await this.request(`/Lecture/OneStop.asp?SearchDate=${encodeURIComponent(date)}&SearchID=`, { step: '원스톱 목록' });
     if (r.status >= 300 && /Login/i.test(r.location)) throw new Error('엔보임 로그인이 유지되지 않았어요.');
     if (/id="UserID"/.test(r.text) && /id="Passwd"/.test(r.text) && !/OneStopList/.test(r.text)) throw new Error('엔보임 로그인이 유지되지 않았어요.');
     const rows = [];
@@ -177,6 +193,7 @@ class NvoimSession {
   async getFeedback(row) {
     const r = await this.request('/Lecture/Process/LectureEvaluationProc.asp', {
       method: 'POST',
+      step: '피드백 ' + (row.F_STDT_NM || row.F_STDT_ID),
       form: {
         ActionType: 'getLectureAttendanceList',
         F_STDT_ID: row.F_STDT_ID || '',
@@ -336,7 +353,8 @@ export async function syncAll({ deadlineMs, dates } = {}) {
       await session.login(account.userId, decryptText(account.pw));
       for (const date of runDates) {
         const rows = (await session.listLessons(date)).filter(r => r.EvaluationSeq);
-        await mapLimit(rows, 6, async (row) => {
+        await mapLimit(rows, 2, async (row) => {
+         try {
           if (Date.now() > deadline - 1500) { summary.finished = false; return; }
           const key = lessonKey(row.F_STDT_ID, date, row);
           const [done, pend] = await Promise.all([
@@ -363,12 +381,18 @@ export async function syncAll({ deadlineMs, dates } = {}) {
             await store.setJSON('pending/' + key, item);
             last.pending++;
           }
+         } catch (e) {
+          // 이 학생만 실패 → 다음 실행 때 다시 시도
+          last.rowErrors = (last.rowErrors || 0) + 1;
+          if (!last.rowError) last.rowError = e.message || String(e);
+         }
         });
       }
     } catch (e) {
       last.error = e.message || String(e);
       summary.errors.push(`${account.label}: ${last.error}`);
     }
+    if (last.rowErrors) summary.errors.push(`${account.label}: ${last.rowErrors}명 실패 — ${last.rowError}`);
     summary.saved += last.saved; summary.pending += last.pending; summary.waiting += last.waiting;
     await updateAccountLast(account.id, last);
   }

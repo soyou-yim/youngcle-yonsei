@@ -601,8 +601,9 @@ function renderNvoim() {
   nvoimData.accounts.forEach(a => {
     const last = a.last;
     const state = !last ? '<span class="imp-state">아직 실행 전</span>'
-      : last.error ? `<span class="imp-state err">⚠️ ${escH(last.error)}</span>`
-      : `<span class="imp-state ok">✅ ${fmtTime(last.at)} · 저장 ${last.saved} · 대기 ${last.pending}</span>`;
+      : last.error ? `<span class="imp-state err">⚠️ ${fmtTime(last.at)} · ${escH(last.error)}</span>`
+      : `<span class="imp-state ok">✅ ${fmtTime(last.at)} · 저장 ${last.saved} · 대기 ${last.pending}</span>` +
+        (last.rowErrors ? `<span class="imp-state warn">⚠️ ${last.rowErrors}명 다음 실행 때 재시도 (${escH(last.rowError)})</span>` : '');
     const el = document.createElement('div');
     el.className = 'set-item';
     el.innerHTML = `<div><div class="title">${escH(a.label)}</div><div class="meta">아이디 ${escH(a.userId)}</div></div>
