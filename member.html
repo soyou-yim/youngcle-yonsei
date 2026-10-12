@@ -155,8 +155,8 @@
   </footer>
 </div>
 
-<script src="js/shadowing-engine.js?v=20261012d"></script>
-<script src="js/feedback-report.js?v=20261012d"></script>
+<script src="js/shadowing-engine.js?v=20261012e"></script>
+<script src="js/feedback-report.js?v=20261012e"></script>
 <script>
 const API = { login: '/api/member-login', sets: '/api/member-sets', report: '/api/member-report' };
 const TOKEN_KEY = 'shadowing_member_token';
@@ -322,6 +322,35 @@ document.getElementById('reportDownloadBtn').addEventListener('click', async () 
 
 /* ===================== 시작 ===================== */
 try { document.getElementById('engineVersion').textContent = '버전 ' + ShadowingEngine.VERSION; } catch (e) {}
+// ── 자동 업데이트 ──
+// 태블릿처럼 탭을 계속 열어 두면 배포해도 옛 코드가 남아요. 5분마다, 그리고 화면으로 돌아올 때마다
+// /version.json을 확인해서 새 버전이면 알아서 새로고침합니다(연습 중이면 끝난 뒤에).
+// ※ 배포할 때 js/shadowing-engine.js(또는 shadowing.html)의 ENGINE_VERSION과 version.json을 같은 값으로 올려 주세요.
+(function autoUpdate() {
+  const CUR = ShadowingEngine.VERSION;
+  const KEY = 'site_reloaded_for_version';
+  let waiting = null;
+  function practicing() { try { return ShadowingEngine.isPracticing(); } catch (e) { return false; } }
+  function reloadTo(v) {
+    try { if (sessionStorage.getItem(KEY) === v) return; sessionStorage.setItem(KEY, v); } catch (e) {}
+    location.reload();
+  }
+  async function check() {
+    try {
+      const r = await fetch('/version.json?t=' + Date.now(), { cache: 'no-store' });
+      if (!r.ok) return;
+      const v = String((await r.json()).version || '');
+      if (!v || v === CUR) return;
+      if (practicing()) { waiting = v; return; }
+      reloadTo(v);
+    } catch (e) {}
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+  setInterval(() => { if (waiting && !practicing()) reloadTo(waiting); else check(); }, 5 * 60 * 1000);
+  setInterval(() => { if (waiting && !practicing()) reloadTo(waiting); }, 3000);
+  check();
+})();
+
 (function checkSecureContext(){
   if (!ShadowingEngine.isSecureContextForMic()) document.getElementById('secureWarning').style.display = 'block';
 })();
