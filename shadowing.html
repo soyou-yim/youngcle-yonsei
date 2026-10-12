@@ -858,6 +858,71 @@ function stopServerSTT() { if (__sttActive) __sttActive.abort(); }
 
 // 마이크로 직접 녹음 → 서버에서 받아쓰기. 결과 형식은 브라우저 인식과 같습니다({ ok, heard } / { ok:false, error }).
 // 녹음 길이는 문장 길이에 맞춰 정합니다(말이 느린 학생도 충분히 말할 수 있도록 여유 있게).
+
+// ── 서버 받아쓰기 업로드 ──
+// 1) 녹음 파일을 그대로 보내고, 실패하면 2) 어느 브라우저 녹음이든 받아쓰기 서비스가 확실히 읽는 WAV(16kHz)로 바꿔 한 번 더 보냅니다.
+//    (삼성 인터넷 등 일부 브라우저의 녹음 형식을 받아쓰기 서비스가 거부하는 경우 대비)
+// 3) 받아쓰기 엔진(Whisper)은 조용한 녹음에서 "Thank you." 같은 말을 지어내는 버릇이 있어서,
+//    연습 문장에 없는 그런 말만 나오면 "목소리가 안 들렸어요"로 처리합니다.
+const __STT_HALLUCINATIONS = /^(thank you( very much)?( for watching)?|thanks( for watching)?|bye( bye)?|you|okay|ok|so|um+|uh+|hmm+|oh|subtitles?.*|.*amara\.org.*)$/i;
+function __sttNorm(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9'\s]/g, ' ').replace(/\s+/g, ' ').trim(); }
+async function __toWav16k(blob) {
+  const AC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!AC) return null;
+  const ab = await blob.arrayBuffer();
+  const tmp = new AC(1, 2, 16000);
+  const buf = await new Promise((resolve, reject) => {
+    const p = tmp.decodeAudioData(ab, resolve, reject);
+    if (p && p.then) p.then(resolve, reject);
+  });
+  const len = Math.max(1, Math.ceil(buf.duration * 16000));
+  const ctx = new AC(1, len, 16000);
+  const src = ctx.createBufferSource();
+  src.buffer = buf; src.connect(ctx.destination); src.start(0);
+  const out = await ctx.startRendering();
+  const ch = out.getChannelData(0);
+  const bytes = new ArrayBuffer(44 + ch.length * 2), dv = new DataView(bytes);
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); dv.setUint32(4, 36 + ch.length * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, 16000, true); dv.setUint32(28, 32000, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  str(36, 'data'); dv.setUint32(40, ch.length * 2, true);
+  for (let i = 0; i < ch.length; i++) { const v = Math.max(-1, Math.min(1, ch[i])); dv.setInt16(44 + i * 2, v < 0 ? v * 0x8000 : v * 0x7fff, true); }
+  return new Blob([bytes], { type: 'audio/wav' });
+}
+async function __postSTT(body, type) {
+  try {
+    const r = await fetch(STT_SERVER_ENDPOINT, { method: 'POST', headers: { 'Content-Type': type }, body });
+    const data = await r.json().catch(() => ({}));
+    return r.ok ? { ok: true, data } : { ok: false, code: String(r.status), detail: data.error || '' };
+  } catch (e) {
+    return { ok: false, code: 'network', detail: (e && e.message) || '' };
+  }
+}
+async function __serverTranscribe(blob, type, targetText, dbg) {
+  let res = await __postSTT(blob, type);
+  let note = '';
+  if (!res.ok) {
+    // 원래 형식이 거부됐거나 업로드가 끊김 → WAV로 바꿔 한 번 더
+    const first = res;
+    try {
+      const wav = await __toWav16k(blob);
+      if (wav) { res = await __postSTT(wav, 'audio/wav'); note = ' (WAV 재시도)'; }
+    } catch (e) {}
+    if (!res.ok) {
+      if (!note) res = await __postSTT(blob, type); // 변환이 안 되면 원래 파일로 한 번 더
+      if (!res.ok) return { ok: false, error: 'server-stt-failed', code: first.code, debug: dbg + (STT_DEBUG ? ` / 서버 ${first.code} ${first.detail}${note}` : '') };
+    }
+  }
+  const data = res.data || {};
+  const text = (data.text || '').trim();
+  const n = __sttNorm(text);
+  if (n && __STT_HALLUCINATIONS.test(n) && !__sttNorm(targetText).includes(n)) {
+    return { ok: false, error: 'no-speech', debug: dbg + (STT_DEBUG ? ` / 지어낸 말 걸러냄 "${text}"` : '') };
+  }
+  return text ? { ok: true, heard: text } : { ok: false, error: 'no-speech', debug: dbg + (STT_DEBUG ? ` / 원문 "${data.raw || ''}" / 무음확률 ${JSON.stringify(data.noSpeechProb)}` : '') };
+}
+
 function recordAndTranscribe(targetText, onReady) {
   return new Promise(async (resolve) => {
     let settled = false, stream = null, recorder = null, timer = null, aborted = false;
@@ -896,15 +961,7 @@ function recordAndTranscribe(targetText, onReady) {
       const blob = new Blob(chunks, { type });
       const dbg = STT_DEBUG ? `[진단] 녹음 ${(blob.size/1024).toFixed(1)}KB, ${type}` : '';
       if (!blob.size) return settle({ ok: false, error: 'no-speech', debug: dbg });
-      try {
-        const r = await fetch(STT_SERVER_ENDPOINT, { method: 'POST', headers: { 'Content-Type': type }, body: blob });
-        const data = await r.json().catch(() => ({}));
-        if (!r.ok) return settle({ ok: false, error: 'server-stt-failed', debug: dbg + (STT_DEBUG ? ` / 서버 ${r.status} ${data.error || ''}` : '') });
-        const text = (data.text || '').trim();
-        settle(text ? { ok: true, heard: text } : { ok: false, error: 'no-speech', debug: dbg + (STT_DEBUG ? ` / 원문 "${data.raw || ''}" / 무음확률 ${JSON.stringify(data.noSpeechProb)}` : '') });
-      } catch (e) {
-        settle({ ok: false, error: 'server-stt-failed', debug: dbg + (STT_DEBUG ? ` / 네트워크 오류 ${e && e.message}` : '') });
-      }
+      settle(await __serverTranscribe(blob, type, targetText, dbg));
     };
 
     const words = targetText.trim().split(/\s+/).filter(Boolean).length;
@@ -918,7 +975,7 @@ function recordAndTranscribe(targetText, onReady) {
 // 따라 말하기 결과가 실패일 때 화면에 보여줄 안내 문구
 function __sttFailTextBase(i, result) {
   if (result.switchedToServer) return `📱 이 기기에서는 브라우저 음성 인식이 소리를 받지 못하고 있어요(이어폰 마이크 등). 다음 차례부터 사이트가 직접 녹음해서 받아쓰는 방식으로 바꿨어요.`;
-  if (result.error === 'server-stt-failed') return `⚠️ ${i}번째 시도: 서버 받아쓰기에 실패했어요(인터넷 연결 확인). 계속 진행합니다.`;
+  if (result.error === 'server-stt-failed') return `⚠️ ${i}번째 시도: 서버 받아쓰기에 실패했어요${result.code ? ` (오류 ${result.code})` : ''}. 인터넷 연결을 확인해 주세요. 계속 진행합니다.`;
   if (result.error === 'no-speech') return `⚠️ ${i}번째 시도에서 목소리가 들리지 않았어요. "지금 말씀하세요!"가 뜬 뒤 또렷하게 말해 주세요. 계속 진행합니다.`;
   return `⚠️ ${i}번째 시도에서 소리를 인식하지 못했어요 (${result.error}). 계속 진행합니다.`;
 }
