@@ -251,6 +251,7 @@
     ⓘ 한글 번역은 구글 번역을 우선 사용하고(실패 시 MyMemory로 대체), 무료 API라 네트워크가 필요하며 드물게 번역이 표시되지 않을 수 있어요.<br>
     ⓘ Chrome·Edge·Safari·Firefox·웨일에서 사용할 수 있어요. Chrome은 브라우저 음성 인식을, 그 밖의 브라우저와 태블릿은 녹음 후 서버에서 받아쓰는 방식을 사용합니다.<br>
     ⓘ 문법 설명은 외부 API 없이 이 페이지 안에서 규칙 기반으로 자동 생성되는 근사치입니다.
+    <div id="engineVersion" style="margin-top:6px; opacity:0.7;"></div>
   </footer>
 </div>
 
@@ -392,6 +393,24 @@ let __voiceGen = 0;
 let __lastTtsEnd = 0;
 // 지금 재생 중인 카드의 '멈춤' 함수. 다른 카드를 누르면 이걸 불러서 앞 카드의 반복을 완전히 멈춥니다(소리 겹침 방지).
 let __activeShadowStop = null;
+const ENGINE_VERSION = '2026-10-12c'; // 배포할 때마다 바꿔서, 기기마다 최신 코드인지 화면 맨 아래에서 확인할 수 있게 합니다.
+// 화면 진단 표시(주소 끝 ?debug=1): 띵동·음성이 실제로 재생됐는지/막혔는지 오른쪽 아래에 보여줍니다.
+const __DEBUG_ON = /[?&]debug=1\b/.test(location.search);
+function __dbg(msg) {
+  if (!__DEBUG_ON) return;
+  try {
+    let box = document.getElementById('__dbgBox');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = '__dbgBox';
+      box.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:99999;max-width:min(360px,90vw);max-height:40vh;overflow:auto;background:rgba(27,42,78,.92);color:#fff;font:12px/1.5 monospace;padding:8px 10px;border-radius:8px;white-space:pre-wrap;';
+      document.body.appendChild(box);
+    }
+    const t = new Date().toTimeString().slice(0, 8);
+    box.textContent += `${t} ${msg}\n`;
+    box.scrollTop = box.scrollHeight;
+  } catch (e) {}
+}
 // 음성 엔진 깨우기용 문장. 예전엔 'Okay.'였는데 일부 기기(안드로이드 등)는 볼륨 설정을 무시해서
 // "okay"가 작게 들렸어요. 쉼표는 소리 없는 짧은 쉼으로 읽혀서 엔진만 깨우고 단어는 들리지 않아요.
 const WARMUP_TEXT = ',';
@@ -704,6 +723,7 @@ function __playDingStandalone() {
     try {
       if (!__dingAudioUrl) __dingAudioUrl = URL.createObjectURL(__wavBlob(__dingSamples(24000), 24000));
       const ok = await __playAudioOnce(__dingAudioUrl, 1);
+      __dbg(ok ? '띵동(따로) 재생됨' : '띵동(따로) 재생 막힘 → 다른 방법 시도');
       if (ok) { await new Promise(r => setTimeout(r, 250)); return; }
     } catch (e) {}
     await new Promise(resolve => {
@@ -715,7 +735,7 @@ function __playDingStandalone() {
         __dingAudio.onended = () => setTimeout(fin, 250);
         __dingAudio.onerror = fin;
         const pr = __dingAudio.play();
-        if (pr && pr.catch) pr.catch(fin);
+        if (pr && pr.catch) pr.catch(() => { __dbg('띵동 전용 재생기도 막힘'); fin(); });
         setTimeout(fin, 2000);
       } catch (e) { fin(); }
     });
@@ -777,6 +797,7 @@ async function __speakViaAudio(text, rate, gen, withDing) {
     // 사이트가 속도를 미리 적용한 파일이면 1배속으로, 실패했으면 예전처럼 Chrome 재생 속도로 재생
     if (!stretched && ding) { await __playDingStandalone(); if (gen !== __voiceGen) return; }
     const ok = stretched ? await __playAudioOnce(stretched, 1) : await __playAudioOnce(url, r);
+    __dbg(`인터넷 음성 ${ok ? '재생됨' : '재생 실패/막힘'}${stretched ? (ding ? ' (띵동 포함 파일)' : '') : ' (가공 실패 → 원본)'}`);
     if (!ok) return;
   }
 }
@@ -811,6 +832,7 @@ async function speakText(text, rate) {
       } catch (e) {}
     }
     if (withDing) { await __playDingStandalone(); withDing = false; if (gen !== __voiceGen) return; }
+    __dbg(`기기 음성으로 재생 (띵동 ${withDing ? '먼저 재생함' : '없음'})`);
     const ok = await __speakViaSynth(text, rate);
     if (ok || gen !== __voiceGen) return;
     __voiceMode = 'audio'; // 이 기기는 음성 엔진이 실제로 소리를 못 냄 → 이후로는 인터넷 음성 사용
@@ -2262,6 +2284,7 @@ copySummaryBtn.addEventListener('click', async () => {
     copyStatus.textContent = '⚠️ 자동 복사에 실패했어요. 위 텍스트 상자가 선택되어 있으니 Ctrl+C / Cmd+C로 직접 복사해주세요.';
   }
 });
+try { document.getElementById('engineVersion').textContent = '버전 ' + ENGINE_VERSION; } catch (e) {}
 </script>
 </body>
 </html>

@@ -149,6 +149,24 @@
   let __lastTtsEnd = 0;     // 마지막으로 원어민 음성이 끝난 시각(첫 단어 잘림 방지용)          // stopVoice()가 불릴 때마다 증가 → 진행 중이던 재생이 "중단됨"을 알 수 있게
   // 지금 재생 중인 카드의 '멈춤' 함수(다른 카드를 누르면 앞 카드를 완전히 멈춰 소리 겹침 방지)
   let __activeShadowStop = null;
+  const ENGINE_VERSION = '2026-10-12c'; // 배포할 때마다 바꿔서, 기기마다 최신 코드인지 화면 맨 아래에서 확인할 수 있게 합니다.
+  // 화면 진단 표시(주소 끝 ?debug=1): 띵동·음성이 실제로 재생됐는지/막혔는지 오른쪽 아래에 보여줍니다.
+  const __DEBUG_ON = /[?&]debug=1\b/.test(location.search);
+  function __dbg(msg) {
+    if (!__DEBUG_ON) return;
+    try {
+      let box = document.getElementById('__dbgBox');
+      if (!box) {
+        box = document.createElement('div');
+        box.id = '__dbgBox';
+        box.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:99999;max-width:min(360px,90vw);max-height:40vh;overflow:auto;background:rgba(27,42,78,.92);color:#fff;font:12px/1.5 monospace;padding:8px 10px;border-radius:8px;white-space:pre-wrap;';
+        document.body.appendChild(box);
+      }
+      const t = new Date().toTimeString().slice(0, 8);
+      box.textContent += `${t} ${msg}\n`;
+      box.scrollTop = box.scrollHeight;
+    } catch (e) {}
+  }
   // 음성 엔진 깨우기용 문장. 예전엔 'Okay.'였는데 일부 기기(안드로이드 등)는 볼륨 설정을 무시해서
   // "okay"가 작게 들렸어요. 쉼표는 소리 없는 짧은 쉼으로 읽혀서 엔진만 깨우고 단어는 들리지 않아요.
   const WARMUP_TEXT = ',';
@@ -461,6 +479,7 @@
       try {
         if (!__dingAudioUrl) __dingAudioUrl = URL.createObjectURL(__wavBlob(__dingSamples(24000), 24000));
         const ok = await __playAudioOnce(__dingAudioUrl, 1);
+        __dbg(ok ? '띵동(따로) 재생됨' : '띵동(따로) 재생 막힘 → 다른 방법 시도');
         if (ok) { await new Promise(r => setTimeout(r, 250)); return; }
       } catch (e) {}
       await new Promise(resolve => {
@@ -472,7 +491,7 @@
           __dingAudio.onended = () => setTimeout(fin, 250);
           __dingAudio.onerror = fin;
           const pr = __dingAudio.play();
-          if (pr && pr.catch) pr.catch(fin);
+          if (pr && pr.catch) pr.catch(() => { __dbg('띵동 전용 재생기도 막힘'); fin(); });
           setTimeout(fin, 2000);
         } catch (e) { fin(); }
       });
@@ -534,6 +553,7 @@
       // 사이트가 속도를 미리 적용한 파일이면 1배속으로, 실패했으면 예전처럼 Chrome 재생 속도로 재생
       if (!stretched && ding) { await __playDingStandalone(); if (gen !== __voiceGen) return; }
       const ok = stretched ? await __playAudioOnce(stretched, 1) : await __playAudioOnce(url, r);
+      __dbg(`인터넷 음성 ${ok ? '재생됨' : '재생 실패/막힘'}${stretched ? (ding ? ' (띵동 포함 파일)' : '') : ' (가공 실패 → 원본)'}`);
       if (!ok) return;
     }
   }
@@ -568,6 +588,7 @@
         } catch (e) {}
       }
       if (withDing) { await __playDingStandalone(); withDing = false; if (gen !== __voiceGen) return; }
+      __dbg(`기기 음성으로 재생 (띵동 ${withDing ? '먼저 재생함' : '없음'})`);
       const ok = await __speakViaSynth(text, rate);
       if (ok || gen !== __voiceGen) return;
       __voiceMode = 'audio'; // 이 기기는 음성 엔진이 실제로 소리를 못 냄 → 이후로는 인터넷 음성 사용
@@ -1613,6 +1634,7 @@ const STT_DEBUG = /[?&]debug=1\b/.test(location.search); // 주소 끝에 &debug
   }
 
   global.ShadowingEngine = {
+    VERSION: ENGINE_VERSION,
     escapeHTML,
     translateText,
     loadTranslationInto,
