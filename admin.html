@@ -55,6 +55,9 @@
   .set-item{background:var(--input-bg); border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-top:10px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;}
   .set-item .meta{font-size:0.78rem; color:var(--muted);}
   .set-item .title{font-weight:700; color:var(--text); font-size:0.95rem;}
+  /* 회차 목록: 제목·날짜는 윗줄, 버튼은 항상 아랫줄로 통일 */
+  .set-item.set-stack{flex-direction:column; align-items:stretch; gap:8px;}
+  .set-item.set-stack .set-btns{display:flex; gap:6px; flex-wrap:wrap;}
   footer{color:var(--muted); font-size:0.78rem; text-align:center; margin-top:28px;}
   .top-actions{display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;}
   code{background:var(--input-bg); border:1px solid var(--border); padding:1px 6px; border-radius:5px; font-size:0.85em; color:var(--text);}
@@ -545,13 +548,13 @@ async function loadSets() {
     sets.forEach(s => {
       const dateStr = s.createdAt ? new Date(s.createdAt).toLocaleString('ko-KR') : '-';
       const el = document.createElement('div');
-      el.className = 'set-item';
+      el.className = 'set-item set-stack';
       el.innerHTML = `
         <div>
           <div class="title">${s.title}</div>
           <div class="meta">${s.lessonDate ? `📅 수업일 ${Number(s.lessonDate.slice(5, 7))}/${Number(s.lessonDate.slice(8))}(${'일월화수목금토'[new Date(s.lessonDate + 'T00:00:00Z').getUTCDay()]}) · ` : ''}등록 ${dateStr} · 문장 ${s.sentenceCount}개 · 단어 ${s.wordCount}개</div>
         </div>
-        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        <div class="set-btns">
           <button class="btn-ghost btn-small preview-set-btn">👀 미리보기</button>
           <button class="btn-ghost btn-small practice-set-btn">${practiceButtonLabel(practiceSummary[s.id])}</button>
           <button class="btn-ghost btn-small edit-set-btn">✏️ 수정</button>
