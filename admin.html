@@ -548,7 +548,7 @@ async function loadSets() {
       el.innerHTML = `
         <div>
           <div class="title">${s.title}</div>
-          <div class="meta">${dateStr} · 문장 ${s.sentenceCount}개 · 단어 ${s.wordCount}개</div>
+          <div class="meta">${s.lessonDate ? `📅 수업일 ${Number(s.lessonDate.slice(5, 7))}/${Number(s.lessonDate.slice(8))}(${'일월화수목금토'[new Date(s.lessonDate + 'T00:00:00Z').getUTCDay()]}) · ` : ''}등록 ${dateStr} · 문장 ${s.sentenceCount}개 · 단어 ${s.wordCount}개</div>
         </div>
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
           <button class="btn-ghost btn-small preview-set-btn">👀 미리보기</button>

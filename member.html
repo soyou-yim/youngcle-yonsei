@@ -250,7 +250,7 @@ async function loadSets() {
       return;
     }
     sets.forEach(s => {
-      const dateStr = s.createdAt ? new Date(s.createdAt).toLocaleDateString('ko-KR') : '';
+      const dateStr = s.lessonDate ? s.lessonDate.replace(/-/g, '. ') + '.' : (s.createdAt ? new Date(s.createdAt).toLocaleDateString('ko-KR') : ''); // 수업 날짜
       const opt = document.createElement('option');
       opt.value = s.id;
       opt.textContent = `${s.title} (${dateStr}) · 문장 ${s.sentenceCount} · 단어 ${s.wordCount}`;
