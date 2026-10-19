@@ -6,6 +6,8 @@
 // 문장 넣는 규칙: 예문은 그대로, 연습문제는 정답을 채운 완성 문장으로,
 // "틀린 곳 고치기" 문제는 x(틀린 문장) → o(고친 문장)로 넣었어요. 그림을 봐야만 답을 알 수 있는 문제는 뺐어요.
 
+import DAILY_NVOIM from './textbook-daily-nvoim.mjs';
+
 const s = o => ({ x: '', o });
 const fix = (x, o) => ({ x, o });
 
@@ -396,7 +398,7 @@ const GRAMMAR_POINTS = {
   ],
 };
 
-export const TEXTBOOKS = [GRAMMAR_POINTS];
+export const TEXTBOOKS = [GRAMMAR_POINTS, DAILY_NVOIM];
 
 // 연습 기록 회차 ID: book-<교재ID>-<유닛ID>
 export const bookSetId = (bookId, unitId) => `book-${bookId}-${unitId}`;

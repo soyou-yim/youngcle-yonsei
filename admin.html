@@ -153,6 +153,15 @@
   .imp-state{font-size:0.8rem; font-weight:700; margin-left:auto;}
   .imp-state.ok{color:var(--good);} .imp-state.err{color:var(--bad);} .imp-state.warn{color:var(--warn);}
   .sub-h{font-size:0.9rem; margin:18px 0 6px; color:var(--text); font-weight:800; display:flex; align-items:center; gap:8px;}
+  /* 📖 교재쉐도잉: 교재별 접기 */
+  .book-group{border:1px solid var(--border); border-radius:12px; margin-top:10px; background:var(--panel);}
+  .book-group > summary{cursor:pointer; list-style:none; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; font-weight:800; color:var(--text);}
+  .book-group > summary::-webkit-details-marker{display:none;}
+  .book-group > summary::after{content:'펼치기 ▾'; font-size:0.78rem; font-weight:700; color:var(--accent2);}
+  .book-group[open] > summary::after{content:'접기 ▴';}
+  .book-group > summary .meta{font-size:0.78rem; color:var(--muted); font-weight:600; margin-left:auto;}
+  .book-group > .set-item{margin:0 10px 8px;}
+  .book-group > .set-item:last-child{margin-bottom:12px;}
   /* ============ 🎬 영상 쉐도잉 ============ */
   .vid-grid{display:grid; grid-template-columns:2fr 1fr 1fr; gap:10px;}
   @media (max-width:640px){ .vid-grid{grid-template-columns:1fr;} }
@@ -744,7 +753,11 @@ async function loadBookUnits() {
       username ? apiFetch(`${API.practice}?username=${encodeURIComponent(username)}`).catch(() => ({ summary: {} })) : null,
     ]);
     const summary = (practice && practice.summary) || {};
-    box.innerHTML = books.map(b => `<h3 class="sub-h">📘 ${escH(b.title)}</h3>` + b.units.map(u => `
+    // 교재마다 접었다 펼 수 있게 (유닛이 100개인 교재도 있어서). 다시 그려도 펼친 교재는 그대로 펼쳐 둬요.
+    const opened = new Set([...box.querySelectorAll('details.book-group[open]')].map(d => d.dataset.book));
+    const practiced = b => username ? b.units.filter(u => hasPractice(summary[u.id])).length : 0;
+    box.innerHTML = books.map(b => `<details class="book-group" data-book="${escH(b.id)}"${opened.has(b.id) ? ' open' : ''}>
+      <summary><span>📘 ${escH(b.title)}</span><span class="meta">${b.units.length}유닛 · 문장 ${b.units.reduce((a, u) => a + u.sentenceCount, 0)}개${username ? ` · ${escH(username)} 연습 ${practiced(b)}유닛` : ''}</span></summary>` + b.units.map(u => `
       <div class="set-item set-stack">
         <div>
           <div class="title" title="${escH(u.title)}">${escH(u.title)}</div>
@@ -754,7 +767,7 @@ async function loadBookUnits() {
           <button class="btn-ghost btn-small" data-bact="preview" data-id="${u.id}" data-title="${escH(u.title)}">👀 미리보기</button>
           ${username ? `<button class="btn-ghost btn-small practice-set-btn${hasPractice(summary[u.id]) ? ' has-practice' : ''}" data-bact="practice" data-id="${u.id}" data-title="${escH(u.title)}" title="${practiceButtonTitle(summary[u.id])}">${practiceButtonLabel(summary[u.id])}</button>` : ''}
         </div>
-      </div>`).join('')).join('') || '<div class="empty">등록된 교재가 없어요.</div>';
+      </div>`).join('') + '</details>').join('') || '<div class="empty">등록된 교재가 없어요.</div>';
   } catch (e) {
     box.innerHTML = `<div class="empty">⚠️ ${escH(e.message)}</div>`;
   }
