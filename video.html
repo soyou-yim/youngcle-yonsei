@@ -321,7 +321,7 @@
 <div class="pop" id="pop"></div>
 <div class="toast" id="toast"></div>
 
-<script src="js/shadowing-engine.js?v=20261019a"></script>
+<script src="js/shadowing-engine.js?v=20261020a"></script>
 <script src="js/yt-media.js?v=20261019f"></script>
 <script>
 (function () {
@@ -920,13 +920,32 @@ function step() {
     return;
   }
   setPill(S.mode === 'shadow' ? '🔔 곧 시작 · 같이 말할 준비' : '🔔 잘 들으세요 👂', 'go');
-  dingDong().then(() => {
+  dingDong().then(async () => {
   if (!running || myRun !== runId) return;
-  setPill(S.mode === 'shadow' ? '같이 말하세요 🗣' : '잘 들으세요 👂', 'go');
+  // 쉐도잉: 원어민 소리와 '동시에' 말하니까, 문장이 나오는 동안 내 목소리를 녹음해 두었다가 끝나면 채점·재생해요
+  const shadowRec = S.mode === 'shadow' && (S.rec || S.grade) && await startRec(s.i);
+  if (!running || myRun !== runId) { if (recorder && recorder.state === 'recording') recorder.stop(); return; }
+  setPill(S.mode === 'shadow' ? (shadowRec ? '● 같이 말하세요 🗣 (녹음 중)' : '같이 말하세요 🗣') : '잘 들으세요 👂', shadowRec ? 'rec' : 'go');
   playSentence(cur, async () => {
     if (!running) return;
     markDone(s); // 원어민 소리를 끝까지 들은 순간 '공부함'·책갈피
-    if (S.mode === 'shadow') { later(afterRep, 450); return; }
+    if (S.mode === 'shadow' && !shadowRec) { later(afterRep, 450); return; }
+    if (S.mode === 'shadow') {
+      setPill('● 마무리 중…', 'rec');
+      await new Promise(r => setTimeout(r, 700)); // 원어민보다 조금 늦게 끝나는 말끝까지 담기
+      const blob = await stopRec();
+      if (!running || myRun !== runId) return;
+      if (S.grade) {
+        setPill('💯 채점 중…', 'go');
+        const res = await ShadowingEngine.scoreRecording(blob, s.en);
+        if (!running || myRun !== runId) return;
+        showScore(s, res);
+        const mr = micRecord(res, rep + 1, S.reps); if (mr) { logAttempt(s, mr); repLogged = true; }
+      }
+      if (S.rec && recs[s.i]) { setPill('내 목소리 ▶'); playUrl(recs[s.i], () => later(afterRep, 300)); }
+      else later(afterRep, 900);
+      return;
+    }
     // 에코잉: 삐 → 멈추고 따라 말할 시간
     setPill('삐 — 따라 말할 차례 🗣', 'go');
     await beep();
@@ -1091,7 +1110,7 @@ document.addEventListener('click', e => { if (!pop.contains(e.target) && !e.targ
 /* ---- 컨트롤 ---- */
 const modeHints = {
   listen: '끊지 않고 쭉 들으며 흐름을 익혀요. 지금 나오는 문장이 자동으로 표시돼요.',
-  shadow: '원어민 소리와 <b>동시에</b> 그림자처럼 따라 말해요. 문장마다 정한 횟수만큼 반복해요.',
+  shadow: '원어민 소리와 <b>동시에</b> 그림자처럼 따라 말해요. 문장마다 정한 횟수만큼 반복해요. 녹음·채점을 켜면 문장이 끝난 뒤 내 목소리와 일치도를 보여줘요. (🎧 이어폰을 끼면 원어민 소리가 섞이지 않아 더 정확해요)',
   echo: '문장을 끝까지 들은 뒤 <b>멈춘 시간</b>에 메아리처럼 따라 말해요. 녹음·채점을 켜면 내 발음을 바로 확인할 수 있어요.',
 };
 let controlsReady = false;
@@ -1108,7 +1127,7 @@ function initControls() {
   seg('#mode', 'mode', () => {
     $('#modeHint').innerHTML = modeHints[S.mode];
     $('#echoOpts').style.display = S.mode === 'echo' ? 'contents' : 'none';
-    $('#recRow').style.display = S.mode === 'echo' ? '' : 'none';
+    $('#recRow').style.display = S.mode === 'listen' ? 'none' : '';
     if (running) { const k = cur; stop(); cur = k; start(); }
   });
   seg('#textMode', 'text', () => { document.body.classList.remove('t-blur', 't-hide'); if (S.text !== 'show') document.body.classList.add('t-' + S.text); });

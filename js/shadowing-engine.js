@@ -149,7 +149,7 @@
   let __lastTtsEnd = 0;     // 마지막으로 원어민 음성이 끝난 시각(첫 단어 잘림 방지용)          // stopVoice()가 불릴 때마다 증가 → 진행 중이던 재생이 "중단됨"을 알 수 있게
   // 지금 재생 중인 카드의 '멈춤' 함수(다른 카드를 누르면 앞 카드를 완전히 멈춰 소리 겹침 방지)
   let __activeShadowStop = null;
-  const ENGINE_VERSION = '2026-10-16a'; // 배포할 때마다 바꿔서, 기기마다 최신 코드인지 화면 맨 아래에서 확인할 수 있게 합니다.
+  const ENGINE_VERSION = '2026-10-20a'; // 배포할 때마다 바꿔서, 기기마다 최신 코드인지 화면 맨 아래에서 확인할 수 있게 합니다.
   // 화면 진단 표시(주소 끝 ?debug=1): 띵동·음성이 실제로 재생됐는지/막혔는지 오른쪽 아래에 보여줍니다.
   const __DEBUG_ON = /[?&]debug=1\b/.test(location.search);
   function __dbg(msg) {
@@ -1831,9 +1831,27 @@ const STT_DEBUG = /[?&]debug=1\b/.test(location.search); // 주소 끝에 &debug
   }
   function stopListening() { try { __standaloneActive && __standaloneActive(); } catch (e) {} try { stopServerSTT(); } catch (e) {} }
 
+  // ── 이미 녹음한 소리로 채점: 영상 쉐도잉처럼 원어민 소리와 '동시에' 말해서 실시간 인식을 할 수 없을 때 ──
+  //   녹음 파일 → 서버 받아쓰기(지어낸 말 거르기) → 원문과 단어별 비교
+  //   반환: { ok:true, heard, score, html } 또는 { ok:false, error, message }
+  async function scoreRecording(blob, targetText) {
+    if (!blob || !blob.size) return { ok: false, error: 'no-speech', message: '녹음된 소리가 없어요. 마이크를 확인해 주세요.' };
+    const type = (blob.type || 'audio/webm').split(';')[0];
+    const result = await __serverTranscribe(blob, type, targetText, '');
+    if (result.ok) {
+      const { score, html } = compareWords(targetText, result.heard);
+      return { ok: true, heard: result.heard, score, html };
+    }
+    const msg = result.error === 'no-speech'
+      ? '🎙️ 목소리가 잘 들리지 않았어요. 원어민 소리와 함께 조금 더 크게 따라 말해 보세요. (이어폰을 끼면 더 정확해요)'
+      : '⚠️ 받아쓰기 서버에 연결하지 못했어요. 잠시 뒤 다시 해 주세요.';
+    return Object.assign({}, result, { message: msg });
+  }
+
   global.ShadowingEngine = {
     listenAndScore,
     stopListening,
+    scoreRecording,
     VERSION: ENGINE_VERSION,
     isPracticing: () => !!__activeShadowStop, // 연습(반복 재생) 중인지 — 자동 업데이트가 연습 중엔 새로고침하지 않게
     escapeHTML,
