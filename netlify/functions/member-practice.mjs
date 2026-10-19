@@ -3,6 +3,8 @@
 import { requireAuth, jsonResponse } from './_lib/auth.mjs';
 import { getSet } from './_lib/store.mjs';
 import { addAttempts } from './_lib/practice.mjs';
+import { isTextbookSetId, getTextbookSet } from './_lib/textbooks.mjs';
+import { isVideoSetId, getVideoSet } from './_lib/videos.mjs';
 
 export default async (req) => {
   const auth = requireAuth(req, 'member');
@@ -14,8 +16,10 @@ export default async (req) => {
   const setId = String((body && body.setId) || '');
   if (!/^[A-Za-z0-9_-]{1,80}$/.test(setId)) return jsonResponse({ error: 'invalid_set' }, 400);
 
-  // 본인 회차가 맞는지 확인(남의 회차나 없는 회차에는 기록하지 않음)
-  const set = await getSet(auth.username, setId);
+  // 본인 회차가 맞는지 확인(남의 회차나 없는 회차에는 기록하지 않음). 교재 유닛(book-…)·영상(video-…)은 모든 회원 공통이에요.
+  const set = isTextbookSetId(setId) ? getTextbookSet(setId)
+    : isVideoSetId(setId) ? await getVideoSet(setId)
+    : await getSet(auth.username, setId);
   if (!set) return jsonResponse({ error: 'set_not_found' }, 404);
 
   const result = await addAttempts(auth.username, setId, body.attempts);

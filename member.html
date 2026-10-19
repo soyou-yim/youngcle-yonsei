@@ -127,6 +127,12 @@
       <button class="btn-ghost btn-small" id="logoutBtn">로그아웃</button>
     </div>
 
+    <a class='card' href='video.html' style='display:flex; align-items:center; gap:14px; text-decoration:none; padding:16px 20px;'>
+      <span style="font-size:1.8rem;">🎬</span>
+      <span style="flex:1;"><b style="color:var(--text); font-size:1rem;">영상 쉐도잉</b><br><span style="color:var(--muted); font-size:0.85rem;">선생님이 올려준 영어 영상으로 문장별 듣기 · 쉐도잉 · 에코잉 연습하기</span></span>
+      <span style="color:var(--accent2); font-weight:800;">열기 →</span>
+    </a>
+
     <div class="card">
       <h2>🗂️ 회차 선택</h2>
       <div class="card-desc">선생님이 등록해준 수업 회차 중 연습할 회차를 골라주세요. (최신 회차가 먼저 보여요)</div>
@@ -135,6 +141,15 @@
     </div>
 
     <div id="contentArea"></div>
+
+    <div class="card" id="bookCard">
+      <h2>📖 교재 쉐도잉</h2>
+      <div class="card-desc">수업 교재의 문장을 유닛별로 듣고 따라 말해보세요. 피드백 문장 쉐도잉과 같은 방식으로 연습해요.</div>
+      <select class="full" id="bookSelect"><option value="">불러오는 중...</option></select>
+      <div class="status" id="bookStatus"></div>
+    </div>
+
+    <div id="bookContentArea"></div>
 
     <div class="card" id="reportCard">
       <h2>📊 나의 학습 리포트</h2>
@@ -169,10 +184,10 @@
   </footer>
 </div>
 
-<script src="js/shadowing-engine.js?v=20261014a"></script>
-<script src="js/learning-report.js?v=20261014a"></script>
+<script src="js/shadowing-engine.js?v=20261019a"></script>
+<script src="js/learning-report.js?v=20261016a"></script>
 <script>
-const API = { login: '/api/member-login', sets: '/api/member-sets', report: '/api/member-insight', practice: '/api/member-practice' };
+const API = { login: '/api/member-login', sets: '/api/member-sets', report: '/api/member-insight', practice: '/api/member-practice', textbooks: '/api/member-textbooks' };
 const TOKEN_KEY = 'shadowing_member_token';
 const USERNAME_KEY = 'shadowing_member_username';
 
@@ -205,6 +220,7 @@ function showPractice() {
   document.getElementById('practiceArea').classList.remove('hidden');
   document.getElementById('welcomeUsername').textContent = localStorage.getItem(USERNAME_KEY) || '';
   loadSets();
+  loadBooks();
   loadReportMonths();
 }
 
@@ -220,6 +236,9 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     if (!res.ok) throw new Error(data.message || data.error || '로그인 실패');
     setSession(data.token, data.username);
     statusEl.textContent = '';
+    // 영상 쉐도잉(video.html)에서 로그인하러 왔으면 그 화면으로 돌아갑니다.
+    const next = new URLSearchParams(location.search).get('next') || '';
+    if (/^video\.html(\?[\w=&%.-]*)?$/.test(next)) { location.href = next; return; }
     showPractice();
   } catch (e) {
     statusEl.textContent = '⚠️ 아이디 또는 비밀번호가 올바르지 않아요.';
@@ -249,14 +268,16 @@ async function loadSets() {
       contentArea.innerHTML = '';
       return;
     }
+    setsById = {};
     sets.forEach(s => {
-      const dateStr = s.lessonDate ? s.lessonDate.replace(/-/g, '. ') + '.' : (s.createdAt ? new Date(s.createdAt).toLocaleDateString('ko-KR') : ''); // 수업 날짜
+      setsById[s.id] = s;
       const opt = document.createElement('option');
       opt.value = s.id;
-      opt.textContent = `${s.title} (${dateStr}) · 문장 ${s.sentenceCount} · 단어 ${s.wordCount}`;
+      opt.textContent = setOptionLabel(s);
       setSelect.appendChild(opt);
     });
     statusEl.textContent = '';
+    updateSetStudyStatus();
     loadSetContent(setSelect.value);
   } catch (e) {
     statusEl.textContent = '⚠️ ' + e.message;
@@ -264,7 +285,49 @@ async function loadSets() {
   }
 }
 
-setSelect.addEventListener('change', () => loadSetContent(setSelect.value));
+// ── 공부한 회차 표시 ──
+// 서버가 회차마다 연습 기록 요약(practice)을 붙여 보내요. 기록이 있으면 ✅, 없으면 ⬜로 보여줍니다.
+let setsById = {};
+const shortDate = iso => { const d = new Date(new Date(iso).getTime() + 9 * 3600 * 1000); return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`; };
+
+function setOptionLabel(s) {
+  const dateStr = s.lessonDate ? s.lessonDate.replace(/-/g, '. ') + '.' : (s.createdAt ? new Date(s.createdAt).toLocaleDateString('ko-KR') : ''); // 수업 날짜
+  const base = `${s.title} (${dateStr}) · 문장 ${s.sentenceCount} · 단어 ${s.wordCount}`;
+  if (!s.practice) return `⬜ ${base}`;
+  return `✅ ${base} · 공부함${s.practice.last ? ' (' + shortDate(s.practice.last) + ')' : ''}`;
+}
+
+function updateSetStudyStatus() {
+  const statusEl = document.getElementById('setStatus');
+  const s = setsById[setSelect.value];
+  if (!s) return;
+  const total = Object.keys(setsById).length;
+  const done = Object.values(setsById).filter(x => x.practice).length;
+  const summary = `전체 ${total}회차 중 ${done}회차 공부했어요.`;
+  if (s.practice) {
+    const p = s.practice;
+    statusEl.innerHTML = `<b style="color:var(--good);">✅ 이 회차는 공부했어요</b> · 연습 ${p.count}번${p.best ? ` · 최고 일치도 ${p.best}%` : ''}${p.last ? ` · 마지막 ${shortDate(p.last)}` : ''}<br>${summary}`;
+  } else {
+    statusEl.innerHTML = `⬜ 아직 공부하지 않은 회차예요. · ${summary}`;
+  }
+  statusEl.className = 'status';
+}
+
+// 연습을 한 번 하면 목록에도 바로 ✅로 바꿔 보여줘요(서버 기록은 따로 모아서 보내요).
+function markSetStudied(setId, rec) {
+  const s = setsById[setId];
+  if (!s) return;
+  const p = s.practice || { count: 0, spoke: 0, best: 0, last: null };
+  p.count++;
+  if (rec && rec.mode === 'mic' && rec.ok) { p.spoke++; if (rec.score > p.best) p.best = Math.round(rec.score); }
+  p.last = (rec && rec.at) || new Date().toISOString();
+  s.practice = p;
+  const opt = Array.from(setSelect.options).find(o => o.value === setId);
+  if (opt) opt.textContent = setOptionLabel(s);
+  if (setSelect.value === setId) updateSetStudyStatus();
+}
+
+setSelect.addEventListener('change', () => { updateSetStudyStatus(); loadSetContent(setSelect.value); });
 
 async function loadSetContent(id) {
   contentArea.innerHTML = '';
@@ -282,8 +345,82 @@ function renderSet(set) {
   // 카드 렌더링(문장/단어/요약)은 admin.html의 미리보기와 완전히 같은 화면을 쓰도록
   // js/shadowing-engine.js의 renderPracticeSet()으로 공용화했습니다.
   // 연습 반복 한 번마다 기록을 모아 두었다가 서버로 보내요(관리자 페이지 "📊 연습 기록"에서 확인).
-  ShadowingEngine.renderPracticeSet(contentArea, set, { onAttempt: rec => queuePractice(set.id, rec) });
+  ShadowingEngine.renderPracticeSet(contentArea, set, { onAttempt: rec => { queuePractice(set.id, rec); markSetStudied(set.id, rec); } });
 }
+
+/* ===================== 교재 쉐도잉 ===================== */
+// 교재 유닛은 피드백 회차와 같은 모양이라 같은 화면(renderPracticeSet)과 같은 연습 기록으로 연습해요.
+
+const bookSelect = document.getElementById('bookSelect');
+const bookContentArea = document.getElementById('bookContentArea');
+let unitsById = {};
+
+function unitOptionLabel(u) {
+  const base = `${u.title} · 문장 ${u.sentenceCount}`;
+  if (!u.practice) return `⬜ ${base}`;
+  return `✅ ${base} · 공부함${u.practice.last ? ' (' + shortDate(u.practice.last) + ')' : ''}`;
+}
+
+function updateBookStatus() {
+  const statusEl = document.getElementById('bookStatus');
+  const u = unitsById[bookSelect.value];
+  if (!u) { statusEl.textContent = ''; return; }
+  const total = Object.keys(unitsById).length;
+  const done = Object.values(unitsById).filter(x => x.practice).length;
+  const summary = `전체 ${total}유닛 중 ${done}유닛 공부했어요.`;
+  if (u.practice) {
+    const p = u.practice;
+    statusEl.innerHTML = `<b style="color:var(--good);">✅ 이 유닛은 공부했어요</b> · 연습 ${p.count}번${p.best ? ` · 최고 일치도 ${p.best}%` : ''}${p.last ? ` · 마지막 ${shortDate(p.last)}` : ''}<br>${summary}`;
+  } else {
+    statusEl.innerHTML = `⬜ 아직 공부하지 않은 유닛이에요. · ${summary}`;
+  }
+  statusEl.className = 'status';
+}
+
+async function loadBooks() {
+  const statusEl = document.getElementById('bookStatus');
+  try {
+    const { books } = await apiFetch(API.textbooks);
+    unitsById = {};
+    bookSelect.innerHTML = books.map(b => `<optgroup label="${ShadowingEngine.escapeHTML(b.title)}">${b.units.map(u => {
+      unitsById[u.id] = u;
+      return `<option value="${u.id}">${ShadowingEngine.escapeHTML(unitOptionLabel(u))}</option>`;
+    }).join('')}</optgroup>`).join('');
+    if (!Object.keys(unitsById).length) { bookSelect.innerHTML = '<option value="">등록된 교재가 아직 없어요</option>'; return; }
+    updateBookStatus();
+    loadBookUnit(bookSelect.value);
+  } catch (e) {
+    statusEl.textContent = '⚠️ ' + e.message;
+    statusEl.className = 'status error';
+  }
+}
+
+async function loadBookUnit(id) {
+  bookContentArea.innerHTML = '';
+  if (!id) return;
+  bookContentArea.innerHTML = '<div class="empty">불러오는 중...</div>';
+  try {
+    const { set } = await apiFetch(`${API.textbooks}?id=${encodeURIComponent(id)}`);
+    ShadowingEngine.renderPracticeSet(bookContentArea, set, { onAttempt: rec => { queuePractice(set.id, rec); markUnitStudied(set.id, rec); } });
+  } catch (e) {
+    bookContentArea.innerHTML = `<div class="empty">⚠️ ${e.message}</div>`;
+  }
+}
+
+function markUnitStudied(id, rec) {
+  const u = unitsById[id];
+  if (!u) return;
+  const p = u.practice || { count: 0, spoke: 0, best: 0, last: null };
+  p.count++;
+  if (rec && rec.mode === 'mic' && rec.ok) { p.spoke++; if (rec.score > p.best) p.best = Math.round(rec.score); }
+  p.last = (rec && rec.at) || new Date().toISOString();
+  u.practice = p;
+  const opt = Array.from(bookSelect.options).find(o => o.value === id);
+  if (opt) opt.textContent = unitOptionLabel(u);
+  if (bookSelect.value === id) updateBookStatus();
+}
+
+bookSelect.addEventListener('change', () => { updateBookStatus(); loadBookUnit(bookSelect.value); });
 
 /* ===================== 연습 기록 보내기 ===================== */
 // 반복할 때마다 바로 보내지 않고 몇 초 모아서 한 번에 보냅니다. 화면을 닫거나 다른 앱으로 넘어가도 남은 기록을 보내요.

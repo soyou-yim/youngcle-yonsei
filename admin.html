@@ -153,6 +153,49 @@
   .imp-state{font-size:0.8rem; font-weight:700; margin-left:auto;}
   .imp-state.ok{color:var(--good);} .imp-state.err{color:var(--bad);} .imp-state.warn{color:var(--warn);}
   .sub-h{font-size:0.9rem; margin:18px 0 6px; color:var(--text); font-weight:800; display:flex; align-items:center; gap:8px;}
+  /* ============ 🎬 영상 쉐도잉 ============ */
+  .vid-grid{display:grid; grid-template-columns:2fr 1fr 1fr; gap:10px;}
+  @media (max-width:640px){ .vid-grid{grid-template-columns:1fr;} }
+  .vid-file{width:100%; background:var(--input-bg); border:1px dashed var(--accent); border-radius:10px; padding:14px 12px; font-size:0.9rem; color:var(--text);}
+  .vid-prog{margin-top:12px; display:grid; gap:10px;}
+  .vid-prog .lbl{display:flex; justify-content:space-between; gap:10px; font-size:0.8rem; color:var(--muted); font-weight:700; margin-bottom:4px;}
+  .vid-prog .lbl span:last-child{font-weight:400; text-align:right;}
+  .vid-bar{height:8px; border-radius:4px; background:var(--border); overflow:hidden;}
+  .vid-bar > i{display:block; height:100%; width:0; background:var(--accent); transition:width .3s ease;}
+  .vid-prog.paused .vid-bar > i{background:#B8B2A3;}
+  #vidJobBtns.hidden{display:none !important;}
+  .vid-editor{margin-top:20px; border-top:1px dashed var(--border); padding-top:18px;}
+  .vid-editor video{width:100%; max-height:300px; background:#000; border-radius:12px; display:block;}
+  .ved-list{margin-top:10px; max-height:620px; overflow-y:auto; border:1px solid var(--border); border-radius:12px; background:var(--input-bg);}
+  .ved-row{display:grid; grid-template-columns:58px 1fr auto; gap:8px; padding:10px; border-bottom:1px solid var(--border); align-items:start;}
+  .ved-time{font:12px ui-monospace,monospace; color:var(--muted); padding-top:8px;}
+  .ved-time span{font-size:11px; opacity:0.8;}
+  .ved-text textarea{width:100%; resize:none; overflow:hidden; border:1px solid transparent; background:transparent; border-radius:8px; padding:6px 8px; font-family:inherit; font-size:0.93rem; color:var(--text); line-height:1.45;}
+  .ved-text textarea:hover, .ved-text textarea:focus{border-color:var(--border); background:var(--panel);}
+  .ved-text .ved-ko{font-size:0.84rem; color:var(--muted);}
+  .ved-btns{display:flex; flex-direction:column; gap:4px;}
+  .ved-adj{display:flex; gap:4px; align-items:center; flex-wrap:wrap; padding:4px 8px; font-size:0.78rem; color:var(--muted);}
+  .ved-adj .btn-small{padding:3px 8px;}
+  .ved-part{padding:6px 12px; font-size:0.78rem; font-weight:800; color:var(--accent2); background:#FCF6E3; border-bottom:1px solid var(--border);}
+  @media (max-width:560px){ .ved-row{grid-template-columns:1fr;} .ved-btns{flex-direction:row;} .ved-time{padding-top:0;} }
+  .vid-grid.vid-grid-2{grid-template-columns:1fr 1fr;}
+  .vid-grid.vid-grid-lv{grid-template-columns:2fr 1fr;}
+  .ved-caption{margin-top:8px; padding:9px 12px; border-radius:10px; font-size:0.84rem; white-space:pre-line; line-height:1.55;}
+  .ved-caption.human{background:#E4F5EC; color:var(--good); border:1px solid #BFE6D0;}
+  .ved-caption.auto{background:#FCF1DA; color:#7A5300; border:1px solid #F0DDAE;}
+  .ved-caption.ai{background:#EFEAFB; color:var(--accent2); border:1px solid #D9D0F2;}
+  @media (max-width:640px){ .vid-grid.vid-grid-lv{grid-template-columns:1fr;} }
+  .lv-badge{display:inline-block; font-size:0.72rem; font-weight:800; padding:1px 8px; border-radius:999px; background:#1B2A4E; color:#fff; margin-right:6px; vertical-align:1px;}
+  .lv-badge.none{background:var(--border); color:var(--muted);}
+  .lv-badge.kids{background:#F2A93B; color:#3A2400;}
+  .kids-note{margin-top:8px; padding:10px 12px; border-radius:10px; background:#FFF6E5; border:1px solid #F2D6A2; color:#6B4A12; font-size:0.85rem; line-height:1.5;}
+  .src-tabs{display:inline-flex; background:var(--input-bg); border:1px solid var(--border); border-radius:12px; padding:4px; margin-bottom:14px; flex-wrap:wrap;}
+  .src-tabs button{background:none; color:var(--muted); padding:8px 14px; border-radius:9px;}
+  .src-tabs button.on{background:var(--accent2); color:#fff;}
+  .paste-box{margin-top:12px; background:#FFFBEF; border:1px solid #F0E2B4; border-radius:12px; padding:14px; font-size:0.86rem; color:var(--text);}
+  .paste-box ol{margin:8px 0 10px; padding-left:20px; line-height:1.7; color:var(--body-text);}
+  .yt-frame{position:relative; width:100%; aspect-ratio:16/9; max-height:320px; background:#000; border-radius:12px; overflow:hidden;}
+  .yt-frame iframe{position:absolute; inset:0; width:100%; height:100%;}
 </style>
 </head>
 <body>
@@ -292,6 +335,165 @@
       <div class="empty" id="memberEmpty">아직 등록된 회원이 없어요.</div>
     </div>
 
+    <!-- ============ 🎬 영상 쉐도잉 (자동 생성) ============ -->
+    <div class="card" id="videoCard">
+      <h2>🎬 영상 쉐도잉 만들기</h2>
+      <div class="card-desc">
+        <b>YouTube 링크만 붙여넣으면</b> 영어 자막을 가져와 문장별로 나누고, 번역하고, 분 단위 파트로 나눠서 쉐도잉을 자동으로 만들어요.
+        영상은 YouTube 플레이어로 재생돼서 따로 올릴 필요가 없어요. 회원은 <code>/video</code>에서 연습합니다.
+      </div>
+
+      <div class="src-tabs" id="srcTabs">
+        <button class="on" data-src="youtube">🔗 YouTube 링크</button>
+        <button data-src="file">📁 내 영상 파일 올리기</button>
+      </div>
+
+      <!-- YouTube 링크 -->
+      <div id="srcYoutube">
+        <div class="field">
+          <label for="ytUrl">YouTube 링크</label>
+          <input type="text" id="ytUrl" placeholder="https://www.youtube.com/watch?v=...  또는  https://youtu.be/..." autocomplete="off">
+        </div>
+        <div class="vid-grid vid-grid-2">
+          <div class="field" style="margin-bottom:0;">
+            <label for="ytStart">시작 (선택, 예: 1:30)</label>
+            <input type="text" id="ytStart" placeholder="처음부터" autocomplete="off">
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <label for="ytEnd">끝 (선택, 예: 6:00)</label>
+            <input type="text" id="ytEnd" placeholder="끝까지" autocomplete="off">
+          </div>
+        </div>
+        <div id="ytPasteBox" class="paste-box hidden">
+          <b>📋 자막을 자동으로 못 가져왔어요 — 스크립트를 붙여넣어 주세요</b>
+          <ol>
+            <li>YouTube에서 영상을 열고, 설명란 아래의 <b>「스크립트 표시」</b>(Show transcript)를 누르세요.</li>
+            <li>오른쪽에 나온 스크립트를 드래그로 전부 선택해서 복사(Ctrl+C)하세요. (<code>0:00</code> 같은 시간이 같이 복사돼야 해요)</li>
+            <li>아래 칸에 붙여넣고 다시 <b>🚀 버튼</b>을 누르세요.</li>
+          </ol>
+          <textarea id="ytPaste" rows="6" placeholder="0:00
+hi everyone welcome back to the channel
+0:04
+today we're going to talk about..."></textarea>
+          <div class="status" id="ytWhy"></div>
+        </div>
+      </div>
+
+      <!-- 파일 올리기 -->
+      <div id="srcFile" class="hidden">
+        <div class="field">
+          <label for="vidFile">영상 / 음성 파일 <span style="font-weight:400;">— MP4(H.264)·MP3·M4A·WebM, 1GB 이하 · 소리를 받아써서 만들어요(10분 영상 약 2~4분)</span></label>
+          <input type="file" id="vidFile" class="vid-file" accept="video/*,audio/*">
+        </div>
+      </div>
+
+      <div class="vid-grid" style="margin-top:12px;">
+        <div class="field" style="margin-bottom:0;">
+          <label for="vidTitle">제목 (비워두면 영상 제목)</label>
+          <input type="text" id="vidTitle" placeholder="예: TED - The power of habits">
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="vidParts">몇 분 단위로 나눌까요?</label>
+          <select class="full" id="vidParts">
+            <option value="0.5">30초</option><option value="1" selected>1분</option><option value="2">2분</option>
+            <option value="3">3분</option><option value="5">5분</option><option value="0">나누지 않음</option>
+          </select>
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="vidVisibility">공개 범위</label>
+          <select class="full" id="vidVisibility">
+            <option value="draft">🔒 비공개(검토 후 공개)</option>
+            <option value="members" selected>👥 회원 공개</option>
+            <option value="public">🌐 전체 공개(로그인 없이)</option>
+          </select>
+        </div>
+      </div>
+      <div class="field" style="margin:12px 0 0;">
+        <label for="vidLevel">레벨 (학생은 고른 레벨의 영상만 봐요)</label>
+        <select class="full" id="vidLevel"><option value="">레벨 선택 안 함</option><option value="kids">👶 유아 (영상만 보기 · 쉐도잉 없음)</option><option value="1-2">Lv 1-2 (입문)</option><option value="3-4">Lv 3-4 (초급)</option><option value="5-6">Lv 5-6 (중급)</option><option value="7-9">Lv 7-9 (고급)</option></select>
+      </div>
+      <div class="kids-note hidden" id="vidKidsNote">👶 <b>유아 레벨</b>은 자막·문장·쉐도잉을 만들지 않고 <b>영상만</b> 올려요. 아이들은 「유아」 탭에서 영상을 크게 틀어 볼 수 있어요.</div>
+      <label id="vidTranslateRow" style="display:flex; gap:8px; align-items:center; font-weight:400; margin-top:10px; cursor:pointer;">
+        <input type="checkbox" id="vidTranslate" checked> <span style="font-size:0.85rem; color:var(--body-text);">문장마다 한국어 번역도 자동으로 넣기</span>
+      </label>
+      <div class="row">
+        <button class="btn-primary" id="vidStartBtn">🚀 쉐도잉 자동으로 만들기</button>
+        <span id="vidJobBtns" class="hidden" style="display:inline-flex; gap:8px;">
+          <button class="btn-ghost" id="vidPauseBtn">⏸ 일시정지</button>
+          <button class="btn-danger" id="vidCancelBtn">⏹ 중지</button>
+        </span>
+      </div>
+      <div id="vidProgress" class="vid-prog hidden">
+        <div id="vidUpRow"><div class="lbl"><span>① 영상 업로드</span><span id="vidUpLabel"></span></div><div class="vid-bar"><i id="vidUpBar"></i></div></div>
+        <div><div class="lbl"><span id="vidTrTitle">② 대사 받아쓰기 · 문장 정리</span><span id="vidTrLabel"></span></div><div class="vid-bar"><i id="vidTrBar"></i></div></div>
+      </div>
+      <div class="status" id="vidStatus"></div>
+
+      <!-- 문장 편집기 -->
+      <div id="vidEditor" class="vid-editor hidden">
+        <h2 style="font-size:0.95rem;">✏️ 스크립트 확인 · 수정</h2>
+        <div class="card-desc" style="margin-bottom:10px;">자동 받아쓰기라 고유명사·말끝이 틀릴 수 있어요. ▶로 들어보고 고치거나, 너무 짧은 문장은 <b>⤵ 합치기</b>로 붙이세요.</div>
+        <div id="vidPreviewBox"><video id="vidPreview" controls playsinline preload="metadata"></video></div>
+        <div id="vedClip" class="sub" style="margin-top:6px;"></div>
+        <div id="vedCaption" class="ved-caption hidden"></div>
+        <div id="vedPasteBox" class="paste-box hidden">
+          <b>📋 YouTube 「스크립트 표시」로 다시 만들기</b>
+          <ol>
+            <li>YouTube에서 이 영상을 열고 설명란 아래 <b>「스크립트 표시」</b>를 눌러요. (오른쪽 위 ⋮에서 언어를 <b>English</b>로 — "자동 생성"이 아닌 것을 고르세요)</li>
+            <li>스크립트를 시간(<code>0:00</code>)까지 함께 드래그해 복사(Ctrl+C)하고, 아래에 붙여넣어요.</li>
+          </ol>
+          <textarea id="vedPaste" rows="6" placeholder="0:00
+Hi everyone, welcome back.
+0:04
+Today we're going to talk about..."></textarea>
+          <div class="row"><button class="btn-primary btn-small" id="vedPasteGo">📋 이 스크립트로 다시 만들기</button></div>
+        </div>
+        <div class="vid-grid" style="margin-top:12px;">
+          <div class="field" style="margin-bottom:0;"><label for="vedTitle">제목</label><input type="text" id="vedTitle"></div>
+          <div class="field" style="margin-bottom:0;"><label for="vedParts">파트 나누기</label>
+            <select class="full" id="vedParts"><option value="0.5">30초</option><option value="1">1분</option><option value="2">2분</option><option value="3">3분</option><option value="5">5분</option><option value="0">나누지 않음</option></select></div>
+          <div class="field" style="margin-bottom:0;"><label for="vedVisibility">공개 범위</label>
+            <select class="full" id="vedVisibility"><option value="draft">🔒 비공개</option><option value="members">👥 회원 공개</option><option value="public">🌐 전체 공개</option></select></div>
+        </div>
+        <div class="vid-grid vid-grid-lv" style="margin-top:10px;">
+          <div class="field" style="margin-bottom:0;"><label for="vedDesc">설명 (선택, 회원 화면에 표시)</label><input type="text" id="vedDesc" placeholder="예: 일상 대화 · 연음 집중 연습"></div>
+          <div class="field" style="margin-bottom:0;"><label for="vedLevel">레벨</label><select class="full" id="vedLevel"><option value="">레벨 선택 안 함</option><option value="kids">👶 유아 (영상만 보기 · 쉐도잉 없음)</option><option value="1-2">Lv 1-2 (입문)</option><option value="3-4">Lv 3-4 (초급)</option><option value="5-6">Lv 5-6 (중급)</option><option value="7-9">Lv 7-9 (고급)</option></select></div>
+        </div>
+        <div class="row" style="justify-content:space-between;">
+          <span class="pill" id="vedCount"></span>
+          <span style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button class="btn-ghost btn-small hidden" id="vedPasteBtn" title="YouTube 「스크립트 표시」를 붙여넣어 더 정확하게 다시 만들어요">📋 스크립트 붙여넣어 다시 만들기</button>
+            <button class="btn-ghost btn-small hidden" id="vedRefetch" title="시간이 어긋난 쉐도잉을 YouTube 자막으로 새로 만들어요">🔄 자막 다시 가져오기</button>
+            <button class="btn-ghost btn-small" id="vedResplit" title="중간에 끊긴 문장을 AI로 이어 붙여 다시 나눠요">✨ 문장 다시 나누기</button>
+            <button class="btn-ghost btn-small" id="vedRetranslate">🌐 빈 번역 채우기</button>
+          </span>
+        </div>
+        <div class="ved-list" id="vedList"></div>
+        <div class="row">
+          <button class="btn-primary" id="vedSave">💾 저장</button>
+          <button class="btn-ghost" id="vedCancel">닫기</button>
+        </div>
+        <div class="status" id="vedStatus"></div>
+      </div>
+
+      <div class="row" style="justify-content:space-between; margin-top:24px;">
+        <h2 style="font-size:0.95rem; margin:0;">🗂️ 올린 영상</h2>
+        <button class="btn-ghost btn-small" id="vidRefresh">↻ 새로고침</button>
+      </div>
+      <div id="vidList"></div>
+    </div>
+
+    <!-- ============ 교재쉐도잉 ============ -->
+    <div class="card" id="bookShadowingCard">
+      <h2>📖 교재쉐도잉</h2>
+      <div class="card-desc">교재 문장을 유닛별로 쉐도잉해요. 모든 회원이 회원 페이지의 「📖 교재 쉐도잉」에서 피드백 문장 쉐도잉과 같은 방식으로 연습합니다. 회원을 고르면 유닛마다 그 회원의 연습 기록을 볼 수 있어요.</div>
+      <div class="field">
+        <label for="bookMemberSelect">연습 기록 볼 회원 (선택)</label>
+        <select class="full" id="bookMemberSelect"><option value="">-- 회원을 선택하세요 --</option></select>
+      </div>
+      <div id="bookUnitList"><div class="empty">불러오는 중...</div></div>
+    </div>
+
     <!-- ============ 회원별 쉐도잉 콘텐츠 ============ -->
     <div class="card">
       <h2>📚 회원별 쉐도잉 콘텐츠</h2>
@@ -356,14 +558,17 @@ vegetable, particularly"></textarea>
   </div>
 </div>
 
-<script src="js/shadowing-engine.js?v=20261014a"></script>
+<script src="js/shadowing-engine.js?v=20261019a"></script>
 <script src="js/learning-report.js?v=20261014a"></script>
+<script src="js/video-transcript.js?v=20261019f"></script>
+<script src="js/yt-media.js?v=20261019f"></script>
 <script>
 const API = {
   adminLogin: '/api/admin-login',
   members: '/api/admin-members',
   sets: '/api/admin-sets',
   practice: '/api/admin-practice',
+  textbooks: '/api/admin-textbooks',
 };
 const TOKEN_KEY = 'shadowing_admin_token';
 
@@ -487,6 +692,7 @@ function renderReportMemberSelect() {
 
 function renderMemberSelect() {
   renderReportMemberSelect();
+  renderBookMemberSelect();
   const sel = document.getElementById('memberSelect');
   const current = sel.value;
   sel.innerHTML = '<option value="">-- 회원을 선택하세요 --</option>';
@@ -514,6 +720,64 @@ document.getElementById('addMemberBtn').addEventListener('click', async () => {
     statusEl.textContent = '⚠️ ' + e.message;
     statusEl.className = 'status error';
   }
+});
+
+/* ===================== 📖 교재 쉐도잉 ===================== */
+// 교재 유닛은 모든 회원 공통이에요. 미리보기는 회원 화면 그대로, 연습 기록은 회원을 골랐을 때 유닛마다 보여줘요.
+
+const bookMemberSelect = document.getElementById('bookMemberSelect');
+let booksCache = null;
+
+function renderBookMemberSelect() {
+  const current = bookMemberSelect.value;
+  bookMemberSelect.innerHTML = '<option value="">-- 회원을 선택하세요 --</option>' + membersCache.map(m => `<option value="${escH(m.username)}">${escH(m.username)}</option>`).join('');
+  if (membersCache.some(m => m.username === current)) bookMemberSelect.value = current;
+  loadBookUnits();
+}
+
+async function loadBookUnits() {
+  const box = document.getElementById('bookUnitList');
+  const username = bookMemberSelect.value;
+  try {
+    const [books, practice] = await Promise.all([
+      booksCache || apiFetch(API.textbooks).then(d => (booksCache = d.books || [])),
+      username ? apiFetch(`${API.practice}?username=${encodeURIComponent(username)}`).catch(() => ({ summary: {} })) : null,
+    ]);
+    const summary = (practice && practice.summary) || {};
+    box.innerHTML = books.map(b => `<h3 class="sub-h">📘 ${escH(b.title)}</h3>` + b.units.map(u => `
+      <div class="set-item set-stack">
+        <div>
+          <div class="title" title="${escH(u.title)}">${escH(u.title)}</div>
+          <div class="meta">문장 ${u.sentenceCount}개${u.wordCount ? ` · 단어 ${u.wordCount}개` : ''}</div>
+        </div>
+        <div class="set-btns">
+          <button class="btn-ghost btn-small" data-bact="preview" data-id="${u.id}" data-title="${escH(u.title)}">👀 미리보기</button>
+          ${username ? `<button class="btn-ghost btn-small practice-set-btn${hasPractice(summary[u.id]) ? ' has-practice' : ''}" data-bact="practice" data-id="${u.id}" data-title="${escH(u.title)}" title="${practiceButtonTitle(summary[u.id])}">${practiceButtonLabel(summary[u.id])}</button>` : ''}
+        </div>
+      </div>`).join('')).join('') || '<div class="empty">등록된 교재가 없어요.</div>';
+  } catch (e) {
+    box.innerHTML = `<div class="empty">⚠️ ${escH(e.message)}</div>`;
+  }
+}
+
+async function openBookPreview(id, title) {
+  previewTitle.textContent = `👀 미리보기 — ${title || ''}`;
+  previewContent.innerHTML = '<div class="empty">불러오는 중...</div>';
+  previewOverlay.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  try {
+    const { set } = await apiFetch(`${API.textbooks}?id=${encodeURIComponent(id)}`);
+    ShadowingEngine.renderPracticeSet(previewContent, set);
+  } catch (e) {
+    previewContent.innerHTML = `<div class="empty">⚠️ ${e.message}</div>`;
+  }
+}
+
+bookMemberSelect.addEventListener('change', loadBookUnits);
+document.getElementById('bookUnitList').addEventListener('click', e => {
+  const b = e.target.closest('[data-bact]'); if (!b) return;
+  if (b.dataset.bact === 'preview') openBookPreview(b.dataset.id, b.dataset.title);
+  if (b.dataset.bact === 'practice') openPracticeStats(bookMemberSelect.value, b.dataset.id, b.dataset.title);
 });
 
 /* ===================== 회원별 콘텐츠(회차) 관리 ===================== */
@@ -766,7 +1030,7 @@ async function openPracticeStats(username, id, title) {
       if (!confirm(`"${title}" 회차의 연습 기록을 모두 지울까요? 되돌릴 수 없어요.`)) return;
       try {
         await apiFetch(API.practice, { method: 'POST', body: JSON.stringify({ action: 'clear', username, id }) });
-        closePreview(); loadSets();
+        closePreview(); if (/^book-/.test(id)) loadBookUnits(); else loadSets();
       } catch (e) { alert('⚠️ ' + e.message); }
     });
   } catch (e) {
@@ -1177,5 +1441,6 @@ document.querySelectorAll('#reportCard .report-tab').forEach(tab => tab.addEvent
 /* ===================== 시작 ===================== */
 if (getToken()) showMain(); else showLogin();
 </script>
+<script src="js/video-admin.js?v=20261019k"></script>
 </body>
 </html>

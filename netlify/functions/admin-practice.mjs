@@ -5,6 +5,8 @@
 import { requireAuth, jsonResponse } from './_lib/auth.mjs';
 import { getSet } from './_lib/store.mjs';
 import { getSummary, getLog, clearPractice } from './_lib/practice.mjs';
+import { isTextbookSetId, getTextbookSet } from './_lib/textbooks.mjs';
+import { isVideoSetId, getVideoSet } from './_lib/videos.mjs';
 
 export default async (req) => {
   const auth = requireAuth(req, 'admin');
@@ -16,7 +18,8 @@ export default async (req) => {
     const id = url.searchParams.get('id');
     if (!username) return jsonResponse({ error: 'username_required' }, 400);
     if (!id) return jsonResponse({ summary: await getSummary(username) });
-    const [set, log] = await Promise.all([getSet(username, id), getLog(username, id)]);
+    const set = isTextbookSetId(id) ? getTextbookSet(id) : isVideoSetId(id) ? await getVideoSet(id) : await getSet(username, id);
+    const log = await getLog(username, id);
     return jsonResponse({ set, attempts: log.attempts || [] });
   }
 

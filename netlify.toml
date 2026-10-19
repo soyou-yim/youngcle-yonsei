@@ -43,3 +43,8 @@
   for = "/version.json"
   [headers.values]
     Cache-Control = "no-store"
+
+[[headers]]
+  for = "/video"
+  [headers.values]
+    Cache-Control = "no-cache"
